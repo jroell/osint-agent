@@ -1,6 +1,6 @@
 # OSINT Agent — System Design Spec
 
-**Date:** 2026-04-22
+**Date:** 2026-04-22 (rev. 2 — post-SOTA verification pass)
 **Author:** Jason Roell
 **Status:** Draft — awaiting review
 **Codename:** TBD (placeholder: `osint-agent`)
@@ -218,8 +218,11 @@ The ingest pipeline that makes everything else work.
 
 ### 5.1 Stages
 
-1. **Extract** — GLiNER + GLiNER-Relex on unstructured text (90% of cases). Claude Haiku 4.5 via BAML for ambiguous/contextual cases.
-2. **Normalize** — domain-specific normalizers (addresses, phones, etc.) produce canonical forms.
+1. **Extract (tiered)** — three-tier routing based on input complexity:
+   - **Tier 1 (~80%):** **GLiNER + GLiNER-Relex** — deterministic encoder-only NER + relation extraction. ONNX runtime, hardware-cheap. Confidence scores native.
+   - **Tier 2 (~18%):** **Jellyfish-8B** (Llama-3 base) self-hosted on GPU. Instruction-tuned for entity matching / data preprocessing. ~0.08s per instance on A100. Rivals GPT-4 on EM benchmarks at a fraction of the cost. Handles ambiguous pair-decisions and medium-context cases.
+   - **Tier 3 (~2%):** **Claude Haiku 4.5 via BAML** — only invoked when reasoning over long context or cross-document inference is required. Typed outputs.
+2. **Normalize** — domain-specific normalizers (addresses via `libpostal`, phones via `libphonenumber`, domains via `tldextract` + `idna`, crypto via `ens-normalize`) produce canonical forms.
 3. **Candidate-match** — Splink generates candidate pairs using blocking rules (e.g., same domain, same phone prefix, nearby embedding).
 4. **Probabilistic scoring** — Fellegi-Sunter m-probabilities and u-probabilities per comparison vector, producing match-weight per candidate pair.
 5. **Thresholded merge** — three outcomes: auto-merge (above threshold), review-queue (ambiguous), reject.
@@ -255,27 +258,40 @@ The agent chooses among six retrieval strategies per sub-query:
 
 Results from all engaged strategies are fused via **Reciprocal Rank Fusion**, then reranked with **ColBERTv2** and **Cohere Rerank 3** (fallback: `jina-reranker-v2`).
 
-### 6.2 HippoRAG 2 reasoning pattern
+### 6.2 Composite reasoning: HippoRAG 2 + PathRAG + OG-RAG
 
-For multi-hop reasoning queries, we implement HippoRAG 2's neurobiologically-inspired pattern on top of FalkorDB:
-- Build a document→entity bipartite layer atop the graph.
+We compose three SOTA retrieval-augmentation patterns that together dominate single-pattern approaches. No competitor ships this combination.
+
+**HippoRAG 2** — substrate
+- Build a document→entity bipartite layer atop the FalkorDB graph.
 - Personalized PageRank from query-seed entities weighted by embedding similarity.
 - Retrieve evidence from highest-scoring nodes' associated documents.
-- **Target: ≥ 87% evidence recall on multi-hop queries** (HippoRAG 2 benchmark baseline).
+- Baseline: ~87-91% evidence recall, 10-30× cheaper multi-hop than vanilla GraphRAG.
+
+**PathRAG** — path pruning
+- After `bounded_pathfind` or HippoRAG returns candidate paths, apply flow-based pruning (PathRAG algorithm) to keep only information-bearing paths.
+- Cuts context tokens by ~44% without accuracy loss.
+- Directly improves our LLM cost per investigation (Claude Advisor token spend is the largest variable cost).
+
+**OG-RAG** — ontology grounding
+- Our typed entity + edge ontology (§4.1, §4.2) is already schema-constrained.
+- Apply OG-RAG's schema-constrained extraction during retrieval and synthesis — LLM outputs that don't validate against the ontology are rejected/retried.
+- Reduces hallucinations ~40% on structured domains.
 
 ### 6.3 Why this wins
 
 Benchmark published results (SOTA April 2026):
-- Vanilla RAG multi-hop recall: ~40–55%
-- GraphRAG multi-hop recall: ~70–80%
-- HippoRAG 2 multi-hop recall: **87–91%** at **10–30× lower cost** than GraphRAG
-- Production baseline for enterprise RAG is still hybrid (~65–75%). We're choosing to skate ahead.
+- Vanilla RAG multi-hop recall: ~40-55%
+- GraphRAG multi-hop recall: ~70-80%
+- HippoRAG 2 multi-hop recall: **87-91%** at **10-30× lower cost** than GraphRAG
+- **Our composite target: ≥ 90% recall at ~50% of HippoRAG 2 context tokens** (via PathRAG pruning) with ~40% fewer hallucinations (via OG-RAG schema gating). This is the retrieval contract we hold ourselves to, measured on MuSiQue + 2WikiMultiHop + our own OSINT benchmark harness (§12).
+- Production baseline for enterprise RAG is still hybrid (~65-75%). We're choosing to skate ahead.
 
 ---
 
 ## 7. The Connection-Finding Engine (Core Differentiator)
 
-Eight typed MCP tools that compose into investigation strategies no competitor exposes.
+Ten typed MCP tools that compose into investigation strategies no competitor exposes.
 
 ### 7.1 `generate_hypotheses(seed_a, seed_b)`
 LLM proposes ranked connection hypotheses ("shared address," "same phone in different breaches," "temporal coincidence at location," "shell-company control chain"). Output: list of hypothesis objects with testable predicates.
@@ -301,7 +317,13 @@ GraphSAGE-style structural embeddings. Detects "nexus nodes" (addresses with man
 ### 7.8 `contradiction_detect(entity)`
 Bitemporal reasoning: identifies overlapping-valid-time edges with contradictory values from distinct sources. Ranks by significance (recency, source credibility, magnitude of discrepancy).
 
-### 7.9 Composition
+### 7.9 `predict_missing_link(entity, relation_type, top_k=10)`
+Knowledge-graph-embedding-based link prediction (RotatE + hybrid semantic-structural model, with TGN temporal augmentation in Phase 2). Given an entity and a target relation type, ranks the most probable targets that *should* have that edge based on graph structure and semantics. Used for **proactive lead generation** — e.g., "given what we know about John Smith, which phone numbers in the graph are most likely his?" Returns ranked candidates with confidence and supporting structural features.
+
+### 7.10 `cross_source_corroboration(claim, min_sources=3)`
+Given any assertion (from a tool, the user, or another primitive), triangulates supporting and contradicting evidence across all indexed sources. Sources are weighted by a credibility tier (tier S: official records / court / regulatory; tier A: major media / industry registry; tier B: social / commercial APIs; tier C: self-reported / user-contributed). Returns a Bayesian-smoothed confidence score and a citation pack. **Journalist-grade verification primitive** — this is what goes into the evidence bundle for court or publication.
+
+### 7.11 Composition
 
 The agent composes these primitives. Example investigation template **"Are these two people the same?"**:
 1. `structural_role_mining(A)` + `structural_role_mining(B)` — pattern similarity
@@ -309,37 +331,52 @@ The agent composes these primitives. Example investigation template **"Are these
 3. `bounded_pathfind(A, B, max_hops=3)` — direct connections
 4. `community_co_membership(A, B)` — shared network
 5. `contradiction_detect` on each side — lies/inconsistencies
-6. LLM synthesizes a ranked verdict with evidence
+6. `cross_source_corroboration` on the "same person" claim — evidence triangulation
+7. LLM synthesizes a ranked verdict with evidence
+
+Example **"What else should we look at?"**:
+1. `predict_missing_link(seed, relation_type=*)` → top-k predicted edges per relation
+2. Filter by high structural confidence + no existing edge
+3. Surface as "leads the agent thinks are worth investigating" panel
 
 ---
 
 ## 8. Agent Orchestration
 
-### 8.1 LangGraph state machine
+### 8.1 LangGraph state machine (orchestration)
 
 States: `Plan → Collect → Resolve → Traverse → Hypothesize → Verify → Synthesize → Report`.
 
 Each state has a Claude Advisor invocation (Opus 4.7 advisor + Haiku 4.5 executor) and emits typed transitions. The whole run is replayable from the event log.
 
-### 8.2 Claude Advisor Tool
+### 8.2 DSPy module per node (prompt optimization)
 
-Advisor guidance is solicited at each plan/pivot checkpoint (high-value, low-frequency); Haiku executes routine work (tool dispatch, extraction, normalization). Expected per-investigation LLM cost: **$0.30–$2.50** depending on depth, down from ~$8–15 in a pure-Opus setup.
+Each LangGraph node's prompt logic is implemented as a **DSPy module**. Rationale (SOTA pattern as of 2026):
+- DSPy compiles prompts against labeled eval traces, delivering 99%+ reliability on each reasoning step.
+- Cross-model portability: the same LangGraph pipeline can run on Claude, GPT-5.4, or Llama 4 with zero prompt rewrites — important for BYOK customers and future pricing leverage.
+- Upfront compilation cost (100-500 LLM calls per module) is paid once per release; amortized over millions of investigations.
 
-### 8.3 BAML typed outputs
+### 8.3 Claude Advisor Tool
 
-Every LLM call returns a typed, validated object via BAML. No JSON-parsing roulette, no hallucinated fields. BAML schemas are the interface contract between the agent and the graph-writer.
+Advisor guidance is solicited at each plan/pivot checkpoint (high-value, low-frequency); Haiku executes routine work (tool dispatch, extraction, normalization). Expected per-investigation LLM cost: **$0.30-$2.50** depending on depth, down from ~$8-15 in a pure-Opus setup.
 
-### 8.4 Audit trail
+### 8.4 BAML typed outputs
+
+Every LLM call returns a typed, validated object via BAML. No JSON-parsing roulette, no hallucinated fields. BAML schemas are the interface contract between the agent and the graph-writer. BAML schemas are also the inputs to DSPy's signature system — the two toolchains compose cleanly.
+
+### 8.5 Audit trail
 
 Every state transition, tool call, retrieval, and LLM output is written to the investigation's event log in Postgres + traced via OpenTelemetry. The final "Report" includes a collapsible reasoning trace with citations.
 
 ---
 
-## 9. Tool Catalog (v1 — 30 tools)
+## 9. Tool Catalog
 
-Organized by investigation phase.
+Organized by investigation phase. v1 targets **36 tools**; Phase 1.5 adds **4**; Phase 2 adds **~15**.
 
-### Domain / Infrastructure (8)
+### v1 — Phase 1 (36 tools)
+
+#### Domain / Infrastructure (8)
 1. `subfinder_passive` (PD Go lib)
 2. `dns_lookup_comprehensive` (dnsx lib)
 3. `whois_historical` (WhoisXML API)
@@ -349,45 +386,92 @@ Organized by investigation phase.
 7. `domain_age_history` (SecurityTrails)
 8. `http_probe` (httpx lib — tech fingerprint, screenshot)
 
-### Internet-connected devices / hosts (3)
-9. `shodan_search` (Shodan API)
-10. `censys_search` (Censys API)
-11. `port_scan_passive` (naabu lib, safe-mode)
+#### Stealth HTTP layer (1 — foundational)
+9. `stealth_http_fetch` — JA4+ / TLS-fingerprint-matching HTTP client via `rnet` (Python). Impersonates real-browser TLS handshakes. Hits ~30-40% of Cloudflare/DataDome-protected sites at browser-free cost. Used internally by most other tools; also exposed directly for advanced users.
 
-### Person / Identity (6)
-12. `username_sherlock` (custom Go port of sherlock logic)
-13. `email_holehe` (Python worker)
-14. `email_breach_lookup` (HIBP + DeHashed)
-15. `phone_numverify` (NumVerify + libphonenumber)
-16. `google_account_ghunt` (Python worker)
-17. `people_public_records` (per-jurisdiction adapters)
+#### Internet-connected devices / hosts (3)
+10. `shodan_search` (Shodan API)
+11. `censys_search` (Censys API)
+12. `port_scan_passive` (naabu lib, safe-mode)
 
-### Social media (5)
-18. `instagram_public_profile` (instaloader-scoped)
-19. `twitter_snscrape_public` (snscrape)
-20. `linkedin_public_profile` (compliant commercial API partner)
-21. `reddit_api_query` (official Reddit API)
-22. `github_user_profile` (GitHub API)
+#### Person / Identity (6)
+13. `username_sherlock` (custom Go port of sherlock logic)
+14. `email_holehe` (Python worker)
+15. `email_breach_lookup` (HIBP + DeHashed)
+16. `phone_numverify` (NumVerify + libphonenumber)
+17. `google_account_ghunt` (Python worker)
+18. `people_public_records` (per-jurisdiction adapters)
 
-### Leaks / Breach intelligence (3)
-23. `hibp_lookup` (HIBP v3)
-24. `intelx_search` (Intelligence X, commercial)
-25. `dehashed_search` (DeHashed, commercial)
+#### Social media (5)
+19. `instagram_public_profile` (instaloader-scoped)
+20. `twitter_snscrape_public` (snscrape)
+21. `linkedin_public_profile` (compliant commercial API partner)
+22. `reddit_api_query` (official Reddit API)
+23. `github_user_profile` (GitHub API)
 
-### Content / Archives (3)
-26. `wayback_history` (Wayback API)
-27. `common_crawl_lookup` (Common Crawl index)
-28. `pdf_document_analyze` (extract text + entities + exif)
+#### Leaks / Breach intelligence (3)
+24. `hibp_lookup` (HIBP v3)
+25. `intelx_search` (Intelligence X, commercial)
+26. `dehashed_search` (DeHashed, commercial)
 
-### Geospatial / Image (2)
-29. `reverse_image_search` (multi-backend: Bing Visual + Yandex scraper)
-30. `exif_extract_geolocate` (exiftool + geocoder)
+#### Corporate records + sanctions (3 — new in v1)
+27. `opencorporates_search` (OpenCorporates API — 200M+ companies, 120+ jurisdictions)
+28. `opensanctions_screen` (OpenSanctions — sanctions lists, PEPs, cross-links to OpenCorporates)
+29. `sec_edgar_filing_search` (SEC EDGAR — US public filings, historical)
 
-**Phase 2 additions (not in v1):** crypto-wallet tracing, corporate-records deep adapters (OpenCorporates, Companies House, SEC EDGAR), sanctions lists (OpenSanctions, OFAC), academic/patent search, dark-web breach monitoring, LinkedIn deep enrichment, Hunchly integration, PimEyes face-match.
+#### Content / Archives (3)
+30. `wayback_history` (Wayback API)
+31. `common_crawl_lookup` (Common Crawl index)
+32. `pdf_document_analyze` (extract text + entities + exif)
+
+#### Geospatial / Image (2)
+33. `reverse_image_search` (multi-backend: Yandex + TinEye + Bing Visual)
+34. `exif_extract_geolocate` (exiftool + geocoder)
+
+#### Meta (2)
+35. `tool_cost_estimate` — returns credit-cost estimate for a proposed tool-call plan before execution (helps the agent stay within user budget)
+36. `evidence_bundle_export` — packages case state into immutable evidence bundle (Merkle-tree rollup, signed manifest) for court/publication
+
+### Phase 1.5 additions (months 3-5)
+
+37. `gdelt_gkg_query` — GDELT Global Knowledge Graph 2.0 via BigQuery. Subjects across global media in 100+ languages, updated every 15min. Transformative for journalists.
+38. `deepfake_detect_media` — Reality Defender API for image/video/audio authenticity. Essential journalist tooling.
+39. `gdelt_visual_gkg_query` — GDELT's Visual GKG for image-in-news analysis.
+40. `hive_moderate_batch` — Hive AI for high-throughput content authenticity (team-tier feature).
+
+### Phase 2 additions (~15 tools)
+
+- **Audio OSINT:** `deepgram_transcribe_diarize` (ASR + speaker diarization), `deepgram_voice_clone_detect`, `whisper_transcribe_local` (BYOK tier)
+- **Face / identity verification:** `face_search_multi_backend` (FaceCheck.ID + Lenso.ai + Yandex, consent-gated with AUP enforcement)
+- **Crypto tracing:** `arkham_entity_lookup`, `arkham_fund_flow`, `breadcrumbs_bridge_trace`, `breadcrumbs_mixer_detect`, `etherscan_tx_history`, `solscan_tx_history`
+- **Dark web (partner):** `darkowl_search` (via DarkOwl API partnership)
+- **Advanced infra:** `silentpush_passive_dns`, `silentpush_iofa_feed`, `domaintools_iris_pivot`
+- **Corporate deep:** `companies_house_uk_search`, `dun_bradstreet_lookup` (premium only)
+- **Sanctions/adverse media:** `adverse_media_search` (aggregator across GDELT + major registries)
+- **Integrations:** `hunchly_sync` (read-only import of user's Hunchly cases), `maltego_transform_bridge` (export to Maltego graph format)
+
+### Phase 3 (deferred)
+
+- PimEyes deep face (if commercial access terms become tractable)
+- Chainalysis Reactor (only if enterprise tier launches)
+- Voice biometric matching at scale
+- Satellite imagery adapters (Sentinel Hub, Planet Labs)
+- Global court-records API (PACER, state courts) where feasible
 
 ---
 
 ## 10. Infrastructure & Deployment
+
+### 10.0 Scraping hierarchy (four-tier stealth ladder)
+
+Each tool-level scrape attempt walks this ladder, stopping at the first tier that succeeds. This drives 80%+ of the infrastructure cost savings vs competitors who default to headless browsers.
+
+| Tier | Tech | Cost / request | Hits | When used |
+|---|---|---|---|---|
+| 1 | **Direct HTTP** (Go stdlib, Python `httpx`) | ~$0 | Unprotected / public APIs | Default for most OSINT data sources |
+| 2 | **Stealth HTTP** (`rnet` with JA4+ impersonation) | ~$0 + proxy cost | ~30-40% of Cloudflare / DataDome sites | When Tier 1 is blocked at WAF/TLS layer |
+| 3 | **Playwright / Nodriver** (headless Chrome with CDP-direct + stealth patches) | ~$0.002 (compute) | ~50-70% of JS-heavy sites | When Tier 2 fails (CAPTCHA, behavioral) |
+| 4 | **Camoufox** (Firefox antidetect, scores 0% on CreepJS) | ~$0.005 (compute) + premium residential proxy | Near-100% of DataDome / Turnstile / Akamai-protected sites | Last resort — heavy anti-bot |
 
 ### 10.1 Runtime
 
@@ -461,30 +545,46 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 
 ## 12. Phasing & Milestones
 
-### Phase 1 — MVP (target: 4 months)
-- MCP server (stdio + Streamable HTTP) with 20 of the 30 v1 tools
-- ER pipeline (Splink + GLiNER)
-- FalkorDB + Graphiti graph layer
-- 4 of 8 connection primitives (`bounded_pathfind`, `generate_hypotheses`, `temporal_coincidence`, `community_co_membership`)
-- Postgres + auth + billing (Stripe)
-- Credit metering + tier enforcement
-- Launch invite-only beta (target: 100 users)
+### Phase 1 — MVP (target: 4 months, private beta)
+- MCP server (stdio + Streamable HTTP) with 25 of the 36 v1 tools (incl. stealth HTTP layer, corporate records, sanctions)
+- **Three-tier ER** (GLiNER + Jellyfish-8B self-hosted + Claude Haiku 4.5)
+- **FalkorDB + Graphiti** graph layer with bitemporal writes
+- **6 of 10 connection primitives:** `bounded_pathfind`, `probabilistic_path_score`, `generate_hypotheses`, `temporal_coincidence`, `community_co_membership`, `cross_source_corroboration`
+- **Composite retrieval:** HippoRAG 2 baseline + OG-RAG schema gating
+- LangGraph + BAML orchestration (DSPy compilation in Phase 2)
+- Postgres + auth + billing (Stripe) + credit metering
+- OSINT benchmark harness v1 (MuSiQue + 2WikiMultiHop + 50 curated real-world cases)
+- **Launch invite-only beta (target: 100 users)**
 
-### Phase 2 — GA (target: months 4–8)
-- Remaining 10 v1 tools
-- Remaining 4 connection primitives
-- Web analyst UI (SvelteKit; reuses REST API)
-- Multi-region worker deployment (Fly.io EU + APAC)
-- BYOK flow
-- SOC 2 Type I
-- Public launch
+### Phase 1.5 — Public Beta (months 4-6)
+- Remaining 11 v1 tools (full 36-tool catalog)
+- **4 connection primitives added:** `embedding_proximity_without_edges`, `structural_role_mining`, `contradiction_detect`, `predict_missing_link` (RotatE-based)
+- **PathRAG** context pruning integrated into retrieval
+- **DSPy** module compilation for core prompts
+- **GDELT + Reality Defender + Hive** tools (Phase 1.5 additions)
+- Web analyst UI (SvelteKit — Phase 2 preview behind feature flag)
+- SOC 2 Type I audit commences
 
-### Phase 3 — Scale (months 8–18)
-- Phase-2 tool additions (crypto, sanctions, corporate records)
+### Phase 2 — GA (months 6-10)
+- **Multi-region workers** deployed (Fly.io EU + APAC)
+- **BYOK flow** (Advanced + Team tiers)
+- Crypto tracing, audio OSINT, face search, dark web (DarkOwl partnership), Silent Push
 - Team accounts + RBAC
-- Audit-pack export (PDF evidence bundle for court use)
-- Hunchly / Maltego integrations
-- ClickHouse analytics + customer-facing dashboards
+- **Evidence bundle export** (court-grade Merkle-rolled PDF + manifest)
+- **TGN temporal link prediction** upgrade to `structural_role_mining` and `predict_missing_link`
+- Hunchly integration, Maltego bridge export
+- SOC 2 Type I achieved
+- **Public launch**
+
+### Phase 3 — Scale (months 10-18)
+- Graph foundation model evaluation (GraphGPT / OpenGraph) for next-gen link prediction
+- Real-time monitoring / alerting (watched-entity change detection)
+- Advanced corporate adapters (Companies House, Dun & Bradstreet premium)
+- Satellite imagery (Sentinel Hub, Planet Labs)
+- Voice biometric matching at scale
+- Marketplace for user-contributed tool adapters
+- SOC 2 Type II, ISO 27001 optional
+- White-label / reseller tier evaluation
 
 ---
 
@@ -528,19 +628,34 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 
 ### Appendix A — Reference reading (external)
 - HippoRAG 2 multi-hop RAG pattern
+- PathRAG flow-based path pruning
+- OG-RAG ontology-grounded extraction
 - FalkorDB GraphBLAS architecture
 - Graphiti bitemporal KG design
 - Splink Fellegi-Sunter ER
+- Jellyfish-8B / Jellyfish-13B data preprocessing LLM
 - Claude Advisor Tool documentation
 - MCP spec v2.1 (Server Cards)
 - GLiNER-Relex extraction pipeline
+- RotatE / ComplEx knowledge graph embedding for link prediction
+- TGN / TGN-SEAL temporal graph networks
 - ProjectDiscovery tool suite (subfinder, httpx, dnsx, naabu, katana)
+- JA4+ TLS fingerprinting (FoxIO)
+- `rnet` / `curl_cffi` / `pyreqwest-impersonate` HTTP impersonation libraries
+- GDELT Global Knowledge Graph 2.0 + Visual GKG
+- OpenSanctions + OpenCorporates + Nomenklatura toolkit
+- LangGraph + DSPy + BAML composition pattern (2026 production stack)
 
 ### Appendix B — Glossary
 - **Bitemporal**: Modeling both valid-time (when true in the world) and system-time (when recorded).
 - **Entity Resolution (ER)**: Determining that two records refer to the same real-world entity.
 - **Fellegi-Sunter**: Probabilistic record linkage framework (1969) that Splink implements.
 - **HippoRAG**: Neurobiologically-inspired retrieval using personalized PageRank.
+- **JA4+**: Family of TLS/HTTP fingerprints (FoxIO, 2023) that replaced JA3 after Chrome 110 randomized extension order. Universal industry standard for bot detection as of 2026.
+- **KGE**: Knowledge-graph embedding (RotatE, ComplEx, etc.) — vector representation of entities and relations used for link prediction.
 - **Leiden**: Community detection algorithm, improvement over Louvain.
 - **MCP**: Model Context Protocol — standard interface between LLMs and external tools.
+- **OG-RAG**: Ontology-grounded RAG — schema-constrained extraction to reduce hallucinations.
+- **PathRAG**: Flow-based path pruning for graph RAG, reduces context tokens ~44%.
 - **Reciprocal Rank Fusion (RRF)**: Method for combining ranked lists from different retrieval systems.
+- **TGN**: Temporal Graph Network — neural model for dynamic graphs.
