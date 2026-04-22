@@ -321,7 +321,7 @@ Bitemporal reasoning: identifies overlapping-valid-time edges with contradictory
 Knowledge-graph-embedding-based link prediction (RotatE + hybrid semantic-structural model, with TGN temporal augmentation in Phase 2). Given an entity and a target relation type, ranks the most probable targets that *should* have that edge based on graph structure and semantics. Used for **proactive lead generation** — e.g., "given what we know about John Smith, which phone numbers in the graph are most likely his?" Returns ranked candidates with confidence and supporting structural features.
 
 ### 7.10 `cross_source_corroboration(claim, min_sources=3)`
-Given any assertion (from a tool, the user, or another primitive), triangulates supporting and contradicting evidence across all indexed sources. Sources are weighted by a credibility tier (tier S: official records / court / regulatory; tier A: major media / industry registry; tier B: social / commercial APIs; tier C: self-reported / user-contributed). Returns a Bayesian-smoothed confidence score and a citation pack. **Journalist-grade verification primitive** — this is what goes into the evidence bundle for court or publication.
+Given any assertion (from a tool, the user, or another primitive), triangulates supporting and contradicting evidence across all indexed sources. Sources are weighted by a credibility tier (tier S: official records / court / regulatory / **C2PA-signed or Amber-Authenticated media**; tier A: major media / industry registry; tier B: social / commercial APIs; tier C: self-reported / user-contributed). Returns a Bayesian-smoothed confidence score and a citation pack. **Journalist-grade verification primitive** — this is what goes into the evidence bundle for court or publication. Cryptographically-provenanced media (C2PA / Amber Authenticate) receives an elevated weight when present; absence does not penalize older or informal sources.
 
 ### 7.11 Composition
 
@@ -416,7 +416,7 @@ Organized by investigation phase. v1 targets **36 tools**; Phase 1.5 adds **4**;
 
 #### Corporate records + sanctions (3 — new in v1)
 27. `opencorporates_search` (OpenCorporates API — 200M+ companies, 120+ jurisdictions)
-28. `opensanctions_screen` (OpenSanctions — sanctions lists, PEPs, cross-links to OpenCorporates)
+28. `opensanctions_screen` (OpenSanctions — sanctions lists, PEPs, cross-links to OpenCorporates; uses **Nomenklatura** toolkit for data integration and cross-dataset identity matching beyond sanctions alone)
 29. `sec_edgar_filing_search` (SEC EDGAR — US public filings, historical)
 
 #### Content / Archives (3)
@@ -457,6 +457,7 @@ Organized by investigation phase. v1 targets **36 tools**; Phase 1.5 adds **4**;
 - Voice biometric matching at scale
 - Satellite imagery adapters (Sentinel Hub, Planet Labs)
 - Global court-records API (PACER, state courts) where feasible
+- **C2PA / Amber Authenticate media-provenance ingestion** — elevate cryptographically-signed media to tier-S evidence in `cross_source_corroboration` once adoption reaches critical mass (tracked vs Content Authenticity Initiative adoption curve)
 
 ---
 
@@ -553,7 +554,7 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 - **Composite retrieval:** HippoRAG 2 baseline + OG-RAG schema gating
 - LangGraph + BAML orchestration (DSPy compilation in Phase 2)
 - Postgres + auth + billing (Stripe) + credit metering
-- OSINT benchmark harness v1 (MuSiQue + 2WikiMultiHop + 50 curated real-world cases)
+- OSINT benchmark harness v1 (MuSiQue + 2WikiMultiHop + **TGB / TGB-Seq** for temporal reasoning + 50 curated real-world cases)
 - **Launch invite-only beta (target: 100 users)**
 
 ### Phase 1.5 — Public Beta (months 4-6)
@@ -645,6 +646,9 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 - GDELT Global Knowledge Graph 2.0 + Visual GKG
 - OpenSanctions + OpenCorporates + Nomenklatura toolkit
 - LangGraph + DSPy + BAML composition pattern (2026 production stack)
+- Nomenklatura data-integration toolkit (OpenSanctions)
+- TGB / TGB-Seq temporal graph benchmark suite
+- C2PA / Amber Authenticate media-provenance standard (Content Authenticity Initiative)
 
 ### Appendix B — Glossary
 - **Bitemporal**: Modeling both valid-time (when true in the world) and system-time (when recorded).
