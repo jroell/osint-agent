@@ -2268,7 +2268,7 @@ git commit -m "feat(workers): shared tool-protocol types + Ed25519-signed worker
 
 ```bash
 cd apps/go-worker
-go mod init github.com/jroell/osint-agent/go-worker
+go mod init github.com/jroell/osint-agent/apps/go-worker
 go get github.com/labstack/echo/v4@latest
 go get github.com/projectdiscovery/subfinder/v2@latest
 go get github.com/projectdiscovery/dnsx@latest
@@ -2432,7 +2432,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/jroell/osint-agent/go-worker/internal/tools"
+	"github.com/jroell/osint-agent/apps/go-worker/internal/tools"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
@@ -2699,7 +2699,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/jroell/osint-agent/go-worker/internal/server"
+	"github.com/jroell/osint-agent/apps/go-worker/internal/server"
 )
 
 func main() {

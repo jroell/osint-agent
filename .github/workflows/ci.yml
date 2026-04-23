@@ -30,10 +30,9 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
       - run: bun install --frozen-lockfile
-        if: steps.skip.outputs.exists == 'true'
-        continue-on-error: true  # lockfile may not exist on first run
+        if: steps.skip.outputs.exists == 'true' && hashFiles('bun.lockb') != ''
       - run: bun install
-        if: steps.skip.outputs.exists == 'true'
+        if: steps.skip.outputs.exists == 'true' && hashFiles('bun.lockb') == ''
       - run: bun run lint
         if: steps.skip.outputs.exists == 'true'
       - run: bun run test

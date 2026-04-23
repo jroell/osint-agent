@@ -8,13 +8,13 @@
     "test": "bun --filter '*' test",
     "build": "bun --filter '*' build",
     "dev:api": "bun --filter api dev",
-    "db:up": "docker compose -f infra/docker-compose.yml up -d",
-    "db:down": "docker compose -f infra/docker-compose.yml down",
-    "db:migrate": "cd apps/api && dbmate up",
-    "db:rollback": "cd apps/api && dbmate rollback"
+    "db:up": "sh -c 'if [ -f infra/docker-compose.yml ]; then docker compose -f infra/docker-compose.yml up -d; else echo \"Skipping db:up: infra/docker-compose.yml not found\"; fi'",
+    "db:down": "sh -c 'if [ -f infra/docker-compose.yml ]; then docker compose -f infra/docker-compose.yml down; else echo \"Skipping db:down: infra/docker-compose.yml not found\"; fi'",
+    "db:migrate": "sh -c 'if [ -d apps/api ]; then cd apps/api && dbmate up; else echo \"Skipping db:migrate: apps/api not found\"; fi'",
+    "db:rollback": "sh -c 'if [ -d apps/api ]; then cd apps/api && dbmate rollback; else echo \"Skipping db:rollback: apps/api not found\"; fi'"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
-    "@types/bun": "latest"
+    "@types/bun": "^1.1.0"
   }
 }

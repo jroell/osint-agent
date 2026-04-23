@@ -14,12 +14,14 @@ Pre-launch. Active development. Targeting first public release (Hacker News) at 
 
 ## Quickstart (self-host the open-source core)
 
+> Note: The full Quickstart requires `apps/api` (API service + migrations) which lands in a later task of Plan 01. Until then, the `db:migrate` and `dev:api` scripts are no-ops. Once `apps/api` is in place:
+
 ```sh
 # Prerequisites: bun 1.2+, go 1.24+, uv, docker
 bun install
-bun run db:up
-bun run db:migrate
-bun run dev:api
+bun run db:up        # Starts Postgres + Dragonfly via infra/docker-compose.yml
+bun run db:migrate   # Runs once apps/api exists
+bun run dev:api      # Runs once apps/api exists
 ```
 
 Then point your MCP client at `http://localhost:3000/mcp`.
