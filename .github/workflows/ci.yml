@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ts:
+    name: TypeScript (Bun)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.x
+      - run: bun install --frozen-lockfile
+        continue-on-error: true  # lockfile may not exist on first run
+      - run: bun install
+      - run: bun run lint
+      - run: bun run test
+      - run: bun run build
+
+  go:
+    name: Go worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Skip if go-worker not present
+        id: skip
+        run: |
+          if [ -f apps/go-worker/go.mod ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - working-directory: apps/go-worker
+        if: steps.skip.outputs.exists == 'true'
+        run: go test ./...
+      - working-directory: apps/go-worker
+        if: steps.skip.outputs.exists == 'true'
+        run: go build ./...
+
+  py:
+    name: Python worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v3
+      - name: Skip if py-worker not present
+        id: skip
+        run: |
+          if [ -f apps/py-worker/pyproject.toml ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - working-directory: apps/py-worker
+        if: steps.skip.outputs.exists == 'true'
+        run: uv sync --all-extras
+      - working-directory: apps/py-worker
+        if: steps.skip.outputs.exists == 'true'
+        run: uv run pytest
