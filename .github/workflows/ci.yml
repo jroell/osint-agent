@@ -75,7 +75,7 @@ jobs:
       - run: bun run test
         if: steps.skip.outputs.exists == 'true'
       - run: bun run build
-        if: steps.skip.outputs.exists == 'true'
+        if: steps.skip.outputs.exists == 'true' && hashFiles('apps/api/src/index.ts') != ''
 
   go:
     name: Go worker
