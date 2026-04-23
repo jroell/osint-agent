@@ -21,13 +21,16 @@ jobs:
           bun-version: 1.2.x
       - name: Skip if no TS workspace members
         id: skip
+        shell: bash
         run: |
           # Skip the TS lane until at least one workspace package exists.
-          # Task 4 lands apps/api/package.json which flips this to true.
-          if ls apps/*/package.json packages/*/package.json >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+          # Robust across partial-glob cases (apps/* may exist while packages/* is empty).
+          shopt -s nullglob
+          matches=( apps/*/package.json packages/*/package.json )
+          if (( ${#matches[@]} > 0 )); then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
       - run: bun install --frozen-lockfile
         if: steps.skip.outputs.exists == 'true' && hashFiles('bun.lockb') != ''

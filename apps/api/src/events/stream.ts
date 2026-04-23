@@ -30,7 +30,7 @@ export async function writeEvent(e: EventInput): Promise<void> {
   await ensureCurrentMonthPartition();
   await sql`
     INSERT INTO events (tenant_id, user_id, event_type, payload, trace_id)
-    VALUES (${e.tenantId}, ${e.userId ?? null}, ${e.eventType}, ${sql.json(e.payload)}, ${e.traceId ?? null})
+    VALUES (${e.tenantId}, ${e.userId ?? null}, ${e.eventType}, ${sql.json(e.payload as never)}, ${e.traceId ?? null})
   `;
 }
 

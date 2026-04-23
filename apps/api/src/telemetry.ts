@@ -1,8 +1,8 @@
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { Resource } from "@opentelemetry/resources";
-import { SEMRESATTRS_SERVICE_NAME, SEMRESATTRS_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
 import pino from "pino";
 
 export const logger = pino({
@@ -27,9 +27,9 @@ export function startTelemetry(): { shutdown: () => Promise<void> } {
   }
 
   const sdk = new NodeSDK({
-    resource: new Resource({
-      [SEMRESATTRS_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? "osint-api",
-      [SEMRESATTRS_SERVICE_VERSION]: "0.1.0",
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? "osint-api",
+      [ATTR_SERVICE_VERSION]: "0.1.0",
     }),
     traceExporter: new OTLPTraceExporter({ url: `${endpoint}/v1/traces`, headers }),
     instrumentations: [getNodeAutoInstrumentations()],

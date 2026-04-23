@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, mock } from "bun:test";
 import { Elysia } from "elysia";
 import { authPlugin } from "../src/auth/middleware";
-import { sql, closeDb } from "../src/db/client";
+import { sql } from "../src/db/client";
 
 // Mock the firebase module so we don't need a live project for unit tests
 mock.module("../src/auth/firebase", () => ({
@@ -28,7 +28,6 @@ describe("auth middleware", () => {
   afterAll(async () => {
     await sql`DELETE FROM users WHERE firebase_uid = 'firebase-uid-test-1'`;
     await sql`DELETE FROM tenants WHERE name = 'test'`;
-    await closeDb();
   });
 
   const app = new Elysia()

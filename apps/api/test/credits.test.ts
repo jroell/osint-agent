@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { spendCredits, grantCredits, InsufficientCreditsError } from "../src/billing/credits";
-import { sql, closeDb } from "../src/db/client";
+import { sql } from "../src/db/client";
 
 const TENANT_ID = "00000000-0000-0000-0000-000000000002";
 
@@ -17,7 +17,6 @@ describe("billing/credits", () => {
     await sql`DELETE FROM events WHERE tenant_id = ${TENANT_ID}`;
     await sql`DELETE FROM credit_ledger WHERE tenant_id = ${TENANT_ID}`;
     await sql`DELETE FROM tenants WHERE id = ${TENANT_ID}`;
-    await closeDb();
   });
 
   it("spends credits and writes ledger + event", async () => {
@@ -33,8 +32,8 @@ describe("billing/credits", () => {
       WHERE tenant_id = ${TENANT_ID}
       ORDER BY created_at DESC LIMIT 1
     `;
-    expect(Number(row.delta_millicredits)).toBe(-200);
-    expect(row.reason).toBe("tool:dns_lookup");
+    expect(Number(row!.delta_millicredits)).toBe(-200);
+    expect(row!.reason).toBe("tool:dns_lookup");
   });
 
   it("refuses to spend past zero", async () => {

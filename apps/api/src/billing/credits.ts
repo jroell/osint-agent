@@ -37,7 +37,7 @@ export async function spendCredits(args: {
 
     await tx`
       INSERT INTO credit_ledger (tenant_id, user_id, delta_millicredits, reason, metadata)
-      VALUES (${args.tenantId}, ${args.userId ?? null}, ${-args.millicredits}, ${args.reason}, ${sql.json(args.metadata ?? {})})
+      VALUES (${args.tenantId}, ${args.userId ?? null}, ${-args.millicredits}, ${args.reason}, ${sql.json((args.metadata ?? {}) as never)})
     `;
 
     // Fire-and-wait event write within the same tx so we never lose a billing event
@@ -49,7 +49,7 @@ export async function spendCredits(args: {
       traceId: args.traceId,
     });
 
-    return { newBalance: Number(rows[0].credits_balance) };
+    return { newBalance: Number(rows[0]!.credits_balance) };
   });
 }
 
@@ -71,7 +71,7 @@ export async function grantCredits(args: {
     `;
     await tx`
       INSERT INTO credit_ledger (tenant_id, user_id, delta_millicredits, reason, metadata)
-      VALUES (${args.tenantId}, ${args.userId ?? null}, ${args.millicredits}, ${args.reason}, ${sql.json(args.metadata ?? {})})
+      VALUES (${args.tenantId}, ${args.userId ?? null}, ${args.millicredits}, ${args.reason}, ${sql.json((args.metadata ?? {}) as never)})
     `;
     await writeEvent({
       tenantId: args.tenantId,
@@ -79,6 +79,6 @@ export async function grantCredits(args: {
       eventType: "credit.granted",
       payload: { millicredits: args.millicredits, reason: args.reason, ...(args.metadata ?? {}) },
     });
-    return { newBalance: Number(rows[0].credits_balance) };
+    return { newBalance: Number(rows[0]!.credits_balance) };
   });
 }

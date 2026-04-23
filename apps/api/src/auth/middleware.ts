@@ -46,9 +46,10 @@ async function ensureUserAndTenant(user: FirebaseUser): Promise<{ userId: string
     const existing = await tx`
       SELECT id, tenant_id FROM users WHERE firebase_uid = ${user.uid} LIMIT 1
     `;
-    if (existing.length > 0) {
-      await tx`UPDATE users SET last_seen_at = NOW() WHERE id = ${existing[0].id}`;
-      return { userId: existing[0].id as string, tenantId: existing[0].tenant_id as string };
+    const existingRow = existing[0];
+    if (existingRow) {
+      await tx`UPDATE users SET last_seen_at = NOW() WHERE id = ${existingRow.id}`;
+      return { userId: existingRow.id as string, tenantId: existingRow.tenant_id as string };
     }
 
     // Provision tenant (Free tier, 100 credits starting balance)
@@ -57,7 +58,7 @@ async function ensureUserAndTenant(user: FirebaseUser): Promise<{ userId: string
       VALUES (${name}, 'free')
       RETURNING id
     `;
-    const tenantId = tenantRow[0].id as string;
+    const tenantId = tenantRow[0]!.id as string;
 
     // Provision user
     const userRow = await tx`
@@ -65,7 +66,7 @@ async function ensureUserAndTenant(user: FirebaseUser): Promise<{ userId: string
       VALUES (${user.uid}, ${tenantId}, ${email}, ${name})
       RETURNING id
     `;
-    const userId = userRow[0].id as string;
+    const userId = userRow[0]!.id as string;
 
     return { userId, tenantId };
   });
