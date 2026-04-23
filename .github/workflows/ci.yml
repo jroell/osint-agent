@@ -14,6 +14,32 @@ jobs:
   ts:
     name: TypeScript (Bun)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: osint
+          POSTGRES_PASSWORD: osint
+          POSTGRES_DB: osint_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U osint -d osint_dev"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://osint:osint@localhost:5432/osint_dev?sslmode=disable
+      REDIS_URL: redis://localhost:6379
+      FIREBASE_PROJECT_ID: osint-agent-ci
+      ANTHROPIC_API_KEY: sk-ant-ci-placeholder
+      STRIPE_SECRET_KEY: sk_test_ci
+      STRIPE_WEBHOOK_SECRET: whsec_ci
+      STRIPE_PRICE_ID_HUNTER: price_hunter_ci
+      STRIPE_PRICE_ID_OPERATOR: price_operator_ci
+      GO_WORKER_URL: http://localhost:8081
+      PY_WORKER_URL: http://localhost:8082
+      WORKER_SIGNING_KEY_HEX: "0101010101010101010101010101010101010101010101010101010101010101"
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -36,6 +62,14 @@ jobs:
         if: steps.skip.outputs.exists == 'true' && hashFiles('bun.lock') != ''
       - run: bun install
         if: steps.skip.outputs.exists == 'true' && hashFiles('bun.lock') == ''
+      - name: Install dbmate
+        if: steps.skip.outputs.exists == 'true' && hashFiles('apps/api/src/db/migrations/*.sql') != ''
+        run: |
+          curl -fsSL -o /usr/local/bin/dbmate https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64
+          chmod +x /usr/local/bin/dbmate
+      - name: Run migrations
+        if: steps.skip.outputs.exists == 'true' && hashFiles('apps/api/src/db/migrations/*.sql') != ''
+        run: bun run db:migrate
       - run: bun run lint
         if: steps.skip.outputs.exists == 'true'
       - run: bun run test
