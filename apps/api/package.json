@@ -11,6 +11,7 @@
     "build": "bun build src/index.ts --target=bun --outdir=dist"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.90.0",
     "@elysiajs/cors": "^1.1.0",
     "elysia": "^1.1.0",
     "firebase-admin": "13.8.0",
