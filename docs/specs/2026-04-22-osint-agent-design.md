@@ -1,6 +1,6 @@
 # OSINT Agent — System Design Spec
 
-**Date:** 2026-04-22 (rev. 2 — post-SOTA verification pass)
+**Date:** 2026-04-22 (rev. 3 — self-evolving knowledge engine + LLM abstraction)
 **Author:** Jason Roell
 **Status:** Draft — awaiting review
 **Codename:** TBD (placeholder: `osint-agent`)
@@ -11,7 +11,7 @@
 
 A commercial, AI-agent-first Open Source Intelligence (OSINT) platform targeted at solo investigators, private investigators, and freelance journalists. The product ships first as a **Model Context Protocol (MCP) server** that any LLM client (Claude Desktop, Cursor, ChatGPT Desktop, etc.) can connect to, exposing ~50 curated OSINT tools + a purpose-built **connection-finding engine** backed by a multi-tenant bitemporal knowledge graph. Phase 2 layers a first-party web analyst UI on top of the same backend.
 
-The core bet: OSINT tool execution is commodity; **the ability to find non-obvious, multi-hop connections across disjoint data sources with citation-grade evidence is not**. We purpose-build the data, retrieval, and reasoning layers around that capability.
+The core bet: OSINT tool execution is commodity; the **self-evolving investigative knowledge engine** — a bitemporal graph + probabilistic entity resolution + 10 connection-finding primitives + five continuously-active learning loops — is not. The MCP interface is what we distribute; the compounding reasoning substrate behind it is the moat. Every new model release, every new data source, every user investigation strictly increases the system's value for every other user via a privacy-preserving shared pattern library. We purpose-build the data, retrieval, reasoning, and learning layers around that capability.
 
 ### Primary buyer
 Solo PIs, freelance investigative journalists, small investigations firms. Self-serve credit-card sign-up. Target ACV range: $40–200/month base + usage-based credits.
@@ -284,7 +284,7 @@ Benchmark published results (SOTA April 2026):
 - Vanilla RAG multi-hop recall: ~40-55%
 - GraphRAG multi-hop recall: ~70-80%
 - HippoRAG 2 multi-hop recall: **87-91%** at **10-30× lower cost** than GraphRAG
-- **Our composite target: ≥ 90% recall at ~50% of HippoRAG 2 context tokens** (via PathRAG pruning) with ~40% fewer hallucinations (via OG-RAG schema gating). This is the retrieval contract we hold ourselves to, measured on MuSiQue + 2WikiMultiHop + our own OSINT benchmark harness (§12).
+- **Our composite target: ≥ 90% recall at ~50% of HippoRAG 2 context tokens** (via PathRAG pruning) with ~40% fewer hallucinations (via OG-RAG schema gating). This is the retrieval contract we hold ourselves to, measured on MuSiQue + 2WikiMultiHop + our own OSINT benchmark harness (§13, §9.5).
 - Production baseline for enterprise RAG is still hybrid (~65-75%). We're choosing to skate ahead.
 
 ---
@@ -356,9 +356,23 @@ Each LangGraph node's prompt logic is implemented as a **DSPy module**. Rational
 - Cross-model portability: the same LangGraph pipeline can run on Claude, GPT-5.4, or Llama 4 with zero prompt rewrites — important for BYOK customers and future pricing leverage.
 - Upfront compilation cost (100-500 LLM calls per module) is paid once per release; amortized over millions of investigations.
 
-### 8.3 Claude Advisor Tool
+### 8.3 LLM Gateway & Claude Advisor Tool
 
-Advisor guidance is solicited at each plan/pivot checkpoint (high-value, low-frequency); Haiku executes routine work (tool dispatch, extraction, normalization). Expected per-investigation LLM cost: **$0.30-$2.50** depending on depth, down from ~$8-15 in a pure-Opus setup.
+All LLM calls route through an internal **LLM Gateway** that abstracts the provider. Three backends day-one, extensible to any future provider:
+
+| Backend | Role |
+|---|---|
+| **Direct Anthropic** | Primary — Claude Advisor Tool (Opus 4.7 advisor + Haiku 4.5 executor, Sonnet 4.6 for medium tasks) |
+| **OpenRouter** | Multi-model router for (a) cost-sensitive sub-tasks, (b) continuous benchmark-driven evaluation of new models as they release (GPT-5.4, Gemini 2 Pro, Llama 4, DeepSeek R2, Qwen 3, Kimi, etc.), (c) BYOK customers who prefer OpenRouter as their gateway |
+| **BYOK direct** | Premium tier — customer-provided API keys for Anthropic, OpenAI, or any provider, routed through the same gateway |
+
+The gateway is configured per-call-site with:
+- A **preferred model** (e.g., "Claude Sonnet 4.6")
+- A **fallback chain** (graceful degradation on outage or rate-limit)
+- A **cost ceiling** (hard cap; falls back to cheaper model if the preferred would exceed)
+- A **benchmark channel tag** — tagged calls also fire in parallel against alternate models and log results to the evaluation store (off in production, on during benchmark runs)
+
+Advisor guidance is solicited at each plan/pivot checkpoint (high-value, low-frequency); Haiku executes routine work. Expected per-investigation LLM cost: **$0.30-$2.50** depending on depth, down from ~$8-15 in a pure-Opus setup. The gateway ensures this cost tracks downward over time as cheaper open-source models pass our benchmark bar.
 
 ### 8.4 BAML typed outputs
 
@@ -370,7 +384,104 @@ Every state transition, tool call, retrieval, and LLM output is written to the i
 
 ---
 
-## 9. Tool Catalog
+## 9. Self-Evolving Knowledge Engine (The Moat)
+
+The MCP + tool catalog is distributable and commoditizable. The **continuously-learning bitemporal knowledge engine behind it is not**. This section defines the architectural commitments that make the system strictly smarter with every investigation, every new data source, and every stronger LLM.
+
+### 9.1 Three-tier knowledge architecture
+
+```
+Tier 3: Public Reference Graph (global, read-only, shared across all tenants)
+  OpenCorporates, OpenSanctions, GDELT, cert transparency, passive DNS,
+  public breach index, SEC EDGAR, Wayback, Common Crawl. One ingestion
+  pipeline, every customer benefits immediately.
+
+Tier 2: Pattern Library (global, privacy-preserving, shared across tenants)
+  Structural patterns, model weights, priors — never raw case data.
+  Feeds the reasoning and ER layers; recomputed via privacy-preserving
+  aggregation from Tier 1. See §9.3.
+
+Tier 1: Case Graphs (per-tenant, private, encrypted at rest and in transit)
+  Individual investigations. FalkorDB tenant-scoped graph + Graphiti
+  bitemporal layer + Postgres RLS-isolated metadata. Never leaves the
+  tenant boundary except as fully-anonymized aggregates into Tier 2.
+```
+
+### 9.2 Five learning loops (continuously active)
+
+Each loop has an explicit input signal, output artifact, cadence, and success metric. All loops are instrumented from day one; activation threshold (how much data must accumulate before the loop's output is trusted) is separately configurable per loop.
+
+| # | Loop | Input signal | Output artifact | Cadence | Success metric |
+|---|---|---|---|---|---|
+| 1 | **ER feedback** | Human decisions on review-queue items + downstream merge/split corrections | Updated Splink m/u probabilities per entity type; updated Jellyfish-8B LoRA adapters | Weekly batch | Precision ≥ 0.98 maintained while recall climbs |
+| 2 | **Hypothesis outcome** | Each `generate_hypotheses` result labeled confirmed / refuted / inconclusive at investigation close | Hypothesis type priors (Bayesian) per seed-type combination | Daily batch | Mean time to confirmed lead drops QoQ |
+| 3 | **Path quality** | Paths from `bounded_pathfind` marked as "led to insight" / "dead end" by user or agent | Edge-type weights; path-scoring function coefficients | Daily batch | Mean rank of insight-containing path in top-10 |
+| 4 | **Retrieval strategy** | Which of the 6 retrieval strategies (§6.1) produced the cited evidence | DSPy-compiled strategy selector conditioned on query archetype | Weekly batch | Retrieval precision@k on held-out benchmark |
+| 5 | **Model benchmark** | Automated full-benchmark run against every new model release | Gateway routing defaults; per-call-site preferred-model config | On every major model release (< 24h SLA) | Cost per correct investigation trends down over time |
+
+### 9.3 Privacy model for cross-tenant learning
+
+Three buckets, each governed by explicit user-facing policy:
+
+**Bucket A — default-on, no opt-out (fully anonymized statistical aggregates):**
+- Splink m/u probability updates derived from aggregate merge decisions, differential-privacy-smoothed with ε ≤ 1.0
+- Retrieval-strategy effectiveness stats (query archetype → best strategy)
+- DSPy prompt compilations against synthetic eval traces (generated from schema, not user data)
+- Model benchmark scores
+
+**Bucket B — default-on, explicit opt-out (anonymized pattern extraction):**
+- Hypothesis type priors — e.g., "when seed_a is a Person and seed_b is an Organization, hypothesis type `shared_controlled_entity` panned out 34% of cases" (no case, no entity, no user identifiable)
+- Community structure priors — archetypes of communities (size, density, edge-type distributions) without node identities
+- Role-mining archetypes — vector archetypes for "mail-drop address", "burner phone", "shell-company cluster" without the underlying entities
+- Contradiction archetypes — patterns of contradictions (e.g., "voter records vs self-reported address conflicts 12% of the time") without the specific records
+
+**Bucket C — opt-in only (named or attributable contributions):**
+- Sharing specific detected patterns with attribution — e.g., a PI voluntarily contributing "this mail-drop address pattern I found worth flagging" to a community bulletin
+- Case-specific prompts or workflow recipes users want to share with the community
+- Team-level shared memory for multi-seat Team accounts (within-team only by default)
+
+The privacy policy, the AUP, and the onboarding flow all make the three buckets explicit. GDPR-DSAR flow includes the ability to withdraw past Bucket B contributions (Bucket A is statistically-irreversible by design).
+
+### 9.4 Self-healing memory
+
+Writing to the graph is not append-only. Three revision mechanisms:
+
+1. **Contradiction-driven revision** — when a new Claim overlaps-valid-time with an existing edge and contradicts it, the graph runs a revision workflow: the older Claim is superseded (system-time bounded), a new Claim added, and the revision itself becomes a first-class event that feeds Loop 2 (hypothesis outcomes learn from "we got this wrong" patterns too).
+
+2. **Confidence decay** — edges that are not re-corroborated across new ingestions lose confidence linearly over time (half-life configurable per edge type — phone numbers decay faster than birthdates). At tenant-configured threshold, decayed edges auto-prune to review-queue.
+
+3. **Retrospective re-extraction** — when a substantially improved extraction model ships (GLiNER 3.0, Jellyfish-13B, new Claude release passing our benchmark), archived artifacts are re-queued through the ER pipeline. Graph improves retroactively without new user action. Users see a "your case graph was enriched from model X upgrade" notice.
+
+### 9.5 Evaluation-first development
+
+Every component change gates on the OSINT benchmark:
+
+**Benchmark composition:**
+- MuSiQue (multi-hop QA) — 1K held-out items for retrieval regression
+- 2WikiMultiHop — 500 held-out items for composition reasoning
+- TGB / TGB-Seq — temporal reasoning regression
+- **Proprietary OSINT benchmark** — 50+ curated real-world investigation cases with known resolutions, graded automatically + spot-checked manually. Grows quarterly.
+- **Synthetic case generator** — procedurally generates investigation scenarios of configurable difficulty to continuously stress-test the system.
+
+**Gates:**
+- No retrieval-layer PR merges without meeting or exceeding the current benchmark.
+- No model swap activates in prod until it passes the benchmark for its tier.
+- Quarterly public benchmark report to customers — *"here's how much smarter we got this quarter"* — compounds the marketing story.
+
+### 9.6 The compounding thesis
+
+Every quarter the product should measurably improve on four curves:
+
+1. **Benchmark accuracy** (% of investigations resolved correctly on the fixed harness) — up
+2. **Cost per correct investigation** (total LLM + tool + infra cost) — down
+3. **Lead-generation precision** (`predict_missing_link` confirmed-hit rate) — up
+4. **Mean time to insight** (user-action minutes per investigation) — down
+
+These four curves are the entire business. A customer dashboard surfaces the quarter-over-quarter deltas so every user sees the compounding value they're paying for.
+
+---
+
+## 10. Tool Catalog
 
 Organized by investigation phase. v1 targets **36 tools**; Phase 1.5 adds **4**; Phase 2 adds **~15**.
 
@@ -461,9 +572,9 @@ Organized by investigation phase. v1 targets **36 tools**; Phase 1.5 adds **4**;
 
 ---
 
-## 10. Infrastructure & Deployment
+## 11. Infrastructure & Deployment
 
-### 10.0 Scraping hierarchy (four-tier stealth ladder)
+### 11.0 Scraping hierarchy (four-tier stealth ladder)
 
 Each tool-level scrape attempt walks this ladder, stopping at the first tier that succeeds. This drives 80%+ of the infrastructure cost savings vs competitors who default to headless browsers.
 
@@ -474,13 +585,13 @@ Each tool-level scrape attempt walks this ladder, stopping at the first tier tha
 | 3 | **Playwright / Nodriver** (headless Chrome with CDP-direct + stealth patches) | ~$0.002 (compute) | ~50-70% of JS-heavy sites | When Tier 2 fails (CAPTCHA, behavioral) |
 | 4 | **Camoufox** (Firefox antidetect, scores 0% on CreepJS) | ~$0.005 (compute) + premium residential proxy | Near-100% of DataDome / Turnstile / Akamai-protected sites | Last resort — heavy anti-bot |
 
-### 10.1 Runtime
+### 11.1 Runtime
 
 - **Fly.io** primary for multi-region workers. Scrapers in EU, NA, APAC to avoid geo-fenced bot detection and reduce cross-region latency.
 - **GCP** (existing account) for heavy batch / training of Splink models / ClickHouse analytics (if needed).
 - **Cloudflare** for DNS, R2, WAF, Turnstile.
 
-### 10.2 Proxy / data-plane
+### 11.2 Proxy / data-plane
 
 - **BrightData residential** (premium-target scraping; metered per-tenant)
 - **Oxylabs datacenter** (bulk)
@@ -488,17 +599,17 @@ Each tool-level scrape attempt walks this ladder, stopping at the first tier tha
 - **Tor** (passive-only, read-only queries)
 - **Key rotation pool**: 3–5 accounts per paid data source, rotated per-tenant
 
-### 10.3 Data-plane caching
+### 11.3 Data-plane caching
 
 Every external API response is cached to R2 (by normalized-query hash) with a source-specific TTL. Cache hits incur no third-party API cost. Cross-tenant cache sharing applies **only to deterministic public-data sources** (WHOIS, DNS, cert transparency, public ASN data, Wayback, Common Crawl) where the result is a property of the queried identifier rather than a function of the user. Commercial-dataset responses (HIBP, Shodan, DeHashed, etc.) and any user-specific reasoning outputs are never cross-tenant-cached. Default-on for eligible sources with clear disclosure in the privacy policy; opt-out available per-tenant.
 
-### 10.4 Observability
+### 11.4 Observability
 
 - **OpenTelemetry** traces/logs/metrics → Grafana Cloud
 - **Sentry** errors
 - **ClickHouse** (optional Phase 1.5) for tool-usage analytics / billing meters / product insights
 
-### 10.5 Security
+### 11.5 Security
 
 - mTLS between services
 - All inter-service calls signed (Ed25519)
@@ -508,7 +619,7 @@ Every external API response is cached to R2 (by normalized-query hash) with a so
 - Secrets via Infisical or Google Secret Manager
 - SOC 2 Type I target: 12 months. Type II: 24 months.
 
-### 10.6 Cost model (rough v1 unit economics)
+### 11.6 Cost model (rough v1 unit economics)
 
 | Item | Per-month at 1K users | Per-month at 10K users |
 |---|---|---|
@@ -528,7 +639,7 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 
 ---
 
-## 11. Non-Functional Requirements
+## 12. Non-Functional Requirements
 
 | Category | Target |
 |---|---|
@@ -544,7 +655,7 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 
 ---
 
-## 12. Phasing & Milestones
+## 13. Phasing & Milestones
 
 ### Phase 1 — MVP (target: 4 months, private beta)
 - MCP server (stdio + Streamable HTTP) with 25 of the 36 v1 tools (incl. stealth HTTP layer, corporate records, sanctions)
@@ -553,8 +664,10 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 - **6 of 10 connection primitives:** `bounded_pathfind`, `probabilistic_path_score`, `generate_hypotheses`, `temporal_coincidence`, `community_co_membership`, `cross_source_corroboration`
 - **Composite retrieval:** HippoRAG 2 baseline + OG-RAG schema gating
 - LangGraph + BAML orchestration (DSPy compilation in Phase 2)
+- **LLM Gateway** (Anthropic direct + OpenRouter backend) with cost-ceiling + fallback chain
+- **Learning infrastructure (instrumentation only):** Claim versioning, contradiction-revision event stream, hypothesis-outcome labeling, retrieval-strategy tagging. Loops log data but don't yet feed the prod system.
+- **Evaluation harness** — MuSiQue + 2WikiMultiHop + TGB/TGB-Seq + 50 curated OSINT cases. Gates every component-layer PR.
 - Postgres + auth + billing (Stripe) + credit metering
-- OSINT benchmark harness v1 (MuSiQue + 2WikiMultiHop + **TGB / TGB-Seq** for temporal reasoning + 50 curated real-world cases)
 - **Launch invite-only beta (target: 100 users)**
 
 ### Phase 1.5 — Public Beta (months 4-6)
@@ -562,6 +675,8 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 - **4 connection primitives added:** `embedding_proximity_without_edges`, `structural_role_mining`, `contradiction_detect`, `predict_missing_link` (RotatE-based)
 - **PathRAG** context pruning integrated into retrieval
 - **DSPy** module compilation for core prompts
+- **Learning loops activated (Bucket A only):** ER feedback, retrieval-strategy compilation, model-benchmark auto-routing. Privacy-review-complete and DPIA-approved.
+- **Public Tier-3 reference graph** ingestion pipeline live (OpenCorporates, OpenSanctions, GDELT, cert transparency, etc. continuously ingested once for all customers).
 - **GDELT + Reality Defender + Hive** tools (Phase 1.5 additions)
 - Web analyst UI (SvelteKit — Phase 2 preview behind feature flag)
 - SOC 2 Type I audit commences
@@ -573,6 +688,9 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 - Team accounts + RBAC
 - **Evidence bundle export** (court-grade Merkle-rolled PDF + manifest)
 - **TGN temporal link prediction** upgrade to `structural_role_mining` and `predict_missing_link`
+- **Learning loops — Bucket B activated** (hypothesis priors, community archetypes, role-mining patterns). Tenant-level opt-out live.
+- **Self-healing memory live** — contradiction-driven revision, confidence decay, retrospective re-extraction.
+- **Customer compounding dashboard** — each tenant sees their cost-per-investigation, mean-time-to-insight, and lead-generation precision trend QoQ.
 - Hunchly integration, Maltego bridge export
 - SOC 2 Type I achieved
 - **Public launch**
@@ -589,7 +707,7 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 
 ---
 
-## 13. Risks & Mitigations
+## 14. Risks & Mitigations
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
@@ -597,13 +715,17 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 | Breach / data leak of customer cases | Low | Catastrophic | Tenant isolation, RLS, encryption at rest/in flight, SOC 2, bug bounty |
 | LLM cost inflation | Medium | Medium | Advisor Tool pattern caps cost; prompt caching; Haiku-first routing; per-tier credit caps |
 | Third-party API price shocks | Medium | Medium | Multi-source redundancy per data type; cache amortization; contracts with annual rate locks |
-| Competitors ship AI-native first | Medium | High | Bitemporal + connection primitives + pricing are the moat, not tool count; ship connection primitives early as the differentiator |
+| Competitors ship AI-native first | Medium | High | Bitemporal + connection primitives + **self-evolving learning loops** + pricing are the moat, not tool count; ship the learning infrastructure (even dormant) early as the differentiator |
 | Abuse (stalking, doxing) | Medium | Catastrophic (reputational) | AUP + anomaly detection on usage patterns + human review on red-flag queries (e.g., repeated single-individual targeting) + account suspension |
 | FalkorDB/Graphiti project health | Low | High | Graph layer behind a thin abstraction; Neo4j fallback implementation kept in CI |
+| **Cross-tenant learning privacy breach** | Low | Catastrophic | Three-bucket model (§9.3) with strict Bucket A aggregation (differential privacy ε ≤ 1.0), Bucket B explicit opt-out, Bucket C opt-in only. Privacy review + DPIA before each loop activates. Independent auditor review pre-Phase 2. Tenant-triggered purge works across all tiers. |
+| **Self-healing memory data loss** | Low | High | All revisions additive in bitemporal model — prior Claims superseded, never deleted. Decay-auto-prune goes to review-queue, not hard-delete. Undo window (90 days) on all auto-revisions. Full audit trail on every graph-modifying event. |
+| **OpenRouter / LLM vendor dependency** | Medium | Medium | LLM Gateway abstraction means we always have at least two production backends; no call-site hardcodes a provider. Benchmark suite auto-evaluates alternatives continuously. |
+| **Slow learning-loop signal (early-stage data volume)** | High (Phase 1) | Low | Synthetic case generator produces investigation scenarios to bootstrap learning loops before customer volume reaches critical mass. Loops stay dormant (logging only) until activation thresholds met. |
 
 ---
 
-## 14. Out of Scope (v1)
+## 15. Out of Scope (v1)
 
 - Law enforcement / government customers (separate compliance program required)
 - On-prem / air-gapped deployment
@@ -616,16 +738,17 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 
 ---
 
-## 15. Open Questions
+## 16. Open Questions
 
 1. **Branding / name** — `osint-agent` is a placeholder. Candidates to consider: Argus, Meridian, Telltale, Beacon, Nexus, Clue.
-2. **Initial LLM provider lock-in** — default Claude (recommended), but plan for an abstraction layer to allow GPT-5.4 / Gemini 2 Pro for cost-sensitive workloads or BYOK customers.
-3. **Open-source strategy** — should we open-source the tool-worker layer and/or the connection primitives as lead-gen? (Classic OSS-as-marketing play for developer-adjacent products.) Recommendation: open-source the tool adapters (Apache 2.0), keep the ER pipeline + connection primitives + graph schemas closed.
-4. **Reseller / white-label tier** — demand likely exists; defer decision to post-GA.
+2. **Open-source strategy** — should we open-source the tool-worker layer and/or the MCP server as lead-gen? Recommendation: open-source the tool adapters + MCP glue (Apache 2.0), keep ER pipeline + connection primitives + graph schemas + **self-evolving learning loops + pattern library** closed. The open-source tool catalog becomes marketing; the moat stays proprietary.
+3. **Reseller / white-label tier** — demand likely exists; defer decision to post-GA.
+4. **Bucket B default-on vs opt-in** — legal/DPO review needed. Recommendation: Bucket B default-on with explicit opt-out controls in onboarding + settings, consistent with SaaS analytics norms. Requires clear DPIA documentation and plain-English explanation in the privacy policy.
+5. **Synthetic case generator depth** — how realistic must synthetic cases be to meaningfully bootstrap learning loops before real-user volume arrives? Requires an early prototype to calibrate.
 
 ---
 
-## 16. Appendices
+## 17. Appendices
 
 ### Appendix A — Reference reading (external)
 - HippoRAG 2 multi-hop RAG pattern
@@ -652,14 +775,20 @@ Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate o
 
 ### Appendix B — Glossary
 - **Bitemporal**: Modeling both valid-time (when true in the world) and system-time (when recorded).
+- **Bucket A/B/C**: Three tiers of cross-tenant learning contribution (§9.3) — aggregate statistics (default-on), anonymized patterns (default-on, opt-out), named contributions (opt-in only).
+- **DPIA**: Data Protection Impact Assessment — GDPR-required analysis before activating a data-processing activity that may impact privacy.
 - **Entity Resolution (ER)**: Determining that two records refer to the same real-world entity.
 - **Fellegi-Sunter**: Probabilistic record linkage framework (1969) that Splink implements.
 - **HippoRAG**: Neurobiologically-inspired retrieval using personalized PageRank.
 - **JA4+**: Family of TLS/HTTP fingerprints (FoxIO, 2023) that replaced JA3 after Chrome 110 randomized extension order. Universal industry standard for bot detection as of 2026.
 - **KGE**: Knowledge-graph embedding (RotatE, ComplEx, etc.) — vector representation of entities and relations used for link prediction.
 - **Leiden**: Community detection algorithm, improvement over Louvain.
+- **Learning Loop**: A continuously-active feedback cycle (five defined in §9.2) that refines a model, prior, or routing decision from aggregate system operation.
+- **LLM Gateway**: Internal abstraction layer in front of Anthropic, OpenRouter, and BYOK LLM providers. All LLM calls route through it. Enables cost-ceilings, fallback chains, and continuous benchmark-driven model evaluation.
 - **MCP**: Model Context Protocol — standard interface between LLMs and external tools.
 - **OG-RAG**: Ontology-grounded RAG — schema-constrained extraction to reduce hallucinations.
+- **Pattern Library (Tier 2)**: Global, privacy-preserving store of structural patterns, model weights, and priors — the shared substrate that makes the system smarter for every user as aggregate usage grows (§9.1).
 - **PathRAG**: Flow-based path pruning for graph RAG, reduces context tokens ~44%.
 - **Reciprocal Rank Fusion (RRF)**: Method for combining ranked lists from different retrieval systems.
 - **TGN**: Temporal Graph Network — neural model for dynamic graphs.
+- **Three-tier knowledge architecture**: Case graphs (per-tenant private) + Pattern Library (global anonymized) + Public Reference Graph (global public data). §9.1.
