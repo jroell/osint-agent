@@ -1,794 +1,837 @@
 # OSINT Agent — System Design Spec
 
-**Date:** 2026-04-22 (rev. 3 — self-evolving knowledge engine + LLM abstraction)
+**Date:** 2026-04-22 (rev. 4 — solo technical founder + bug-bounty-hunter wedge + OSS-first)
 **Author:** Jason Roell
 **Status:** Draft — awaiting review
 **Codename:** TBD (placeholder: `osint-agent`)
 
 ---
 
+## 0. What Changed in Rev. 4 and Why
+
+Rev. 3 was the right strategic spec for a funded team with a sales arm. Rev. 4 is the same architectural thesis reshaped around a **solo technical founder with no sales, no contacts, no people ops — only technical depth, cheap cloud compute, and ship-velocity**. Every structural choice below reflects that constraint.
+
+| Dimension | Rev. 3 | Rev. 4 | Why |
+|---|---|---|---|
+| Primary buyer | Solo PI / journalist; Compliance mid-market | **Bug bounty hunters + security researchers** (primary), investigative journalists (secondary, unpaid-but-evangelistic) | Only buyer class that self-serves technical tools, lives in channels a solo builder can reach, and evangelizes from technical merit alone. Same OSINT workflow, different label. |
+| Go-to-market | Self-serve solo wedge → outbound Compliance | **Pure PLG**: open-source + MCP registries + content + community + conference talks. No outbound, ever. | Solo technical founder cannot run an outbound motion. PLG is the only motion that scales on technical output. |
+| Open-source posture | Tool adapters OSS, rest closed | **Aggressive OSS: full MCP server + 80% of tool catalog + agent orchestration glue Apache-2.0. Proprietary: World Model, Adversary Library, Policy Network, federated learning, hosted data plane.** | Open-source is the distribution channel, not a side-effect. Proven pattern: Supabase, Sentry, PostHog, Plausible, Cal.com. |
+| Pricing | 4 tiers ($39-$1,499) | **3 self-serve tiers** ($0 / $49 / $199). No Compliance. No Teams in v1. | Every tier buyable by credit card without approval or negotiation. |
+| Phase 1 scope | 5 months, 25 tools, 5 ML systems | **Phase 0 (3 mo, 15 tools, zero ML systems) → Phase 1 (4 mo, 35 tools, hypergraph + adversary library v0)** | Ship a credible paid product in 3 months, compound from there. Solo founder timeline reality. |
+| ML system sequencing | All 5 started Phase 1 | **World Model Phase 2 (months 7-10). Policy Network Phase 3 (months 13-24).** | One person cannot build five ML systems concurrently. Sequence them behind the MVP that is already making money. |
+| Adversary Library curator | Hired expert team | **Jason curates the first 20-30 playbooks himself; community contributes after GA** | You ARE the technical expert. Your expertise is the cold-start. Community + federated discovery grows it. |
+| Compliance / SOC 2 | Type I Phase 1.5 | **Defer all compliance certification until an inbound Compliance customer demands it and pays for it** | SOC 2 costs ~$40K and 3-6 months. Only worth it if the buyer is already at the door. |
+| Distribution | Content + partnerships | **Explicit, enumerated PLG channel stack (§15)** | Every channel picked for "a solo technical founder can execute it alone without sales skill." |
+| Benchmark publication | Phase 1.5 public | **Internal-only for first 6 months; publish in Phase 2 after methodology stabilizes under advisor review** | Published methodology is irreversible. Ship when you can defend it. |
+| Team account / SSO / RBAC | Phase 2 GA | **Deferred indefinitely; add only after ≥50 paying users request it** | Unbounded complexity that doesn't serve the wedge buyer. |
+
+The compounding-inference thesis, the moat, the technical architecture, and the 10× positioning all **remain intact**. What changes is the shape of the business and the ordering of the engineering work to match one-person execution.
+
+---
+
 ## 1. Executive Summary
 
-A commercial, AI-agent-first Open Source Intelligence (OSINT) platform targeted at solo investigators, private investigators, and freelance journalists. The product ships first as a **Model Context Protocol (MCP) server** that any LLM client (Claude Desktop, Cursor, ChatGPT Desktop, etc.) can connect to, exposing ~50 curated OSINT tools + a purpose-built **connection-finding engine** backed by a multi-tenant bitemporal knowledge graph. Phase 2 layers a first-party web analyst UI on top of the same backend.
+**Product:** A recon + OSINT stack shipped as an MCP server + CLI + hosted web app. One integration plugs into Claude Desktop, Cursor, ChatGPT Desktop, or any MCP client; the server exposes ~50 curated OSINT tools backed by a bitemporal knowledge graph with a purpose-built *adversary-aware* connection-finding engine. The moat is a compounding inference layer — World Model, federated pattern learning, predictive temporal reasoning, adversary library, and investigator policy network — that makes the product measurably smarter with every investigation run through it.
 
-The core bet: OSINT tool execution is commodity; the **self-evolving investigative knowledge engine** — a bitemporal graph + probabilistic entity resolution + 10 connection-finding primitives + five continuously-active learning loops — is not. The MCP interface is what we distribute; the compounding reasoning substrate behind it is the moat. Every new model release, every new data source, every user investigation strictly increases the system's value for every other user via a privacy-preserving shared pattern library. We purpose-build the data, retrieval, reasoning, and learning layers around that capability.
+**Primary buyer:** Bug bounty hunters and security researchers. These users already self-serve technical tools with personal credit cards ($20-$200/mo budgets, individual bounties $500-$50K), live in distribution channels a solo technical founder can reach (Twitter/X, Discord, GitHub, Hacker News, YouTube, CFPs), and evangelize from technical merit. Their daily workflow — external recon, attack surface discovery, shadow infra mapping, tech fingerprinting, exposed asset detection — is exactly the workflow the product automates.
 
-### Primary buyer
-Solo PIs, freelance investigative journalists, small investigations firms. Self-serve credit-card sign-up. Target ACV range: $40–200/month base + usage-based credits.
+**Secondary wedge:** Investigative journalists. Unpaid-or-low-paid, but one ProPublica/Bellingcat byline crediting the tool is worth thousands of paid signups. Free Hunter-tier accounts in exchange for attribution.
 
-### Competitive positioning
-- Cheaper than Skopenow / OSINT Industries / IRBsearch at the solo-investigator tier.
-- Smarter (AI-native) than Maltego CE / SpiderFoot OSS / free alternatives.
-- Narrower and faster than enterprise Social Links / ShadowDragon.
-- **Unique moat:** bitemporal graph + probabilistic entity resolution + 8 connection-finding primitives exposed as typed tools to any MCP-compatible LLM.
+**Positioning tagline:**
+> **"The recon stack that finds what someone is hiding."**
+> Adversary-aware OSINT for bounty hunters, security researchers, and journalists. Multi-source recon + probabilistic graph reasoning + a learned library of hidden-infrastructure patterns. One MCP server, your LLM client of choice, $0 free tier.
+
+**10× contract (the testable claim):**
+On an internal-then-published benchmark of real-world recon scenarios, the product surfaces ≥ 4× more non-obvious, later-verified connections per case than the best commercial alternative (Maltego CE, SpiderFoot OSS, Shodan, a stock LLM+MCP-OSINT-tools setup) — at lower cost and lower time-to-insight. Compounds quarter-over-quarter by construction.
+
+**Why incumbents can't catch us:**
+- Data broker wrappers (Skopenow, IRBsearch, OSINT Industries): no graph, no inference, no learning.
+- Pivot tools (Maltego, SpiderFoot): deterministic transforms, no probabilistic reasoning, no cross-case learning.
+- Enterprise OSINT (Social Links, ShadowDragon): contractual per-tenant siloing prevents cross-tenant priors.
+- Stock LLM + generic MCP tools: no world model, no adversary library, no federated learning — retrieval without the moat.
+
+Every one of them either rearchitects their data plane (3-5 year rewrite) or loses the segment. Greenfield is our structural advantage.
 
 ---
 
-## 2. Product Shape
+## 2. The Core Thesis: Compounding Inference
 
-### 2.1 Interfaces
+Every OSINT product in market today treats each investigation as independent. You run queries, pull results, draw lines between them, produce a report. The next investigation starts from zero.
 
-| Interface | Who | Ships in |
+This is wrong in the same way pre-Waymo self-driving was wrong when each car's experience was trapped in that car. Value compounds when every case contributes to a shared understanding of how the world actually looks — and especially how the world looks *when someone is trying to hide things in it*.
+
+The architectural consequence: our core runtime is not a retrieval pipeline. It is an **inference engine** that:
+
+1. Holds **population-scale priors** over what entities, relationships, and adversary behaviors look like, learned from aggregate platform history.
+2. Applies those priors on every new query as **Bayesian updates**, not heuristics.
+3. **Predicts** what the graph should look like if we had complete information, not just what it currently contains.
+4. **Recognizes adversary behavior patterns** (shadow infra, shell structures, sock-puppet networks, identity rotation, document-laundering chains) that no single user has ever seen all of.
+5. **Suggests next actions** with the composite judgment of thousands of expert-hour-equivalents (Phase 3).
+6. Gets stronger every week without any explicit retraining step from the user's perspective.
+
+The MCP server, tool catalog, graph storage, and retrieval stack are all *supporting infrastructure* for this inference engine. Rev. 2 treated them as the product; rev. 3 and rev. 4 treat them as scaffolding.
+
+---
+
+## 3. Product Shape
+
+### 3.1 Interfaces
+
+| Interface | Ships in | Who |
 |---|---|---|
-| MCP server (stdio local) | Individual LLM clients on the user's laptop | Phase 1 |
-| MCP server (Streamable HTTP, remote) | Hosted LLM clients (ChatGPT web, Claude web) | Phase 1 |
-| REST API + API keys | Power users scripting investigations | Phase 1 |
-| Web analyst UI | Users who want a dedicated workbench | Phase 2 |
-| CLI (`osint-agent`) | Technical users | Phase 2 |
+| MCP server (stdio local) | Phase 0 | Any user with a local LLM client (Claude Desktop, Cursor, Cline, Zed AI, etc.) |
+| MCP server (Streamable HTTP, remote) | Phase 0 | Hosted LLM clients + power users |
+| CLI (`osint`) | Phase 1 | Technical users who live in the terminal (the core buyer) |
+| REST API | Phase 1 | Scripting / automation / Burp + Caido plugins |
+| Web UI (SvelteKit, minimal) | Phase 2 | Users who want a dedicated workbench + dashboards |
+| Burp Suite + Caido plugins | Phase 2 | In-workflow integration for bounty hunters |
 
-### 2.2 Deployment model
+### 3.2 Deployment model
 
-Thin local MCP client that authenticates the user against the hosted backend. All expensive / regulated / cache-worthy operations (third-party API calls, proxy pool use, evidence storage, graph persistence) run in the hosted backend. Premium tier permits Bring-Your-Own-Key (BYOK) for compliance-sensitive customers.
+Thin local MCP client authenticates against the hosted backend. All expensive / cache-worthy / learning-fed operations run centrally. Central hosting is non-negotiable — federated learning and population-scale priors require centralization. BYOK available on the Operator tier for LLM provider only; the inference engine is never BYOK, because it is the product.
 
-### 2.3 Pricing (A3 — subscription + credit packs)
+Early operational simplification: **single-tenant-per-VM until volume demands multi-tenancy**. Each paying user gets a small Fly.io machine (~$3-10/mo compute) with a FalkorDB + Graphiti instance and a shared Postgres + DragonflyDB. Multi-tenant consolidation comes in Phase 2 when the user count justifies the engineering cost.
 
-| Tier | Monthly | Included credits | Features |
+### 3.3 Pricing (3 tiers, all self-serve)
+
+| Tier | Price | Included | Who it's for |
 |---|---|---|---|
-| Starter | $39 | 2,000 credits | Core tools, 3 concurrent investigations, 30-day retention |
-| Pro | $129 | 10,000 credits | All tools, 20 concurrent, 180-day retention, contradiction detection, community analysis |
-| Team | $399 | 40,000 credits | 5 seats, shared cases, 1-year retention, priority queue |
-| BYOK add-on *(Phase 2)* | +$49 | — | Bring your own API keys for compliance-sensitive work |
+| **Free** | $0 | 100 credits/mo · open-source tools only · 7-day retention · single-seat | Evaluation, journalists (with attribution), OSS users, data contributors to the world model |
+| **Hunter** | $49/mo | 5,000 credits · all tools · hosted inference · stealth scraping (JA4+) · 30-day retention · webhooks | The core tier — bug bounty hunters, security researchers, journalists on paid accounts |
+| **Operator** | $199/mo | 25,000 credits · priority queue · Adversary Library · Predictive Temporal · API access · 180-day retention · Burp/Caido plugins · BYOK LLM | Top-percentile bounty hunters, red-teamers-of-one, established journalists, independent researchers |
 
-**Credits** meter tool invocations, LLM tokens, and proxy bandwidth on a unified scale. One credit = retail $0.01 (the retail price already incorporates our ~3× markup over underlying cost). Included-credit allocations above reflect retail value (Starter = $20 in included retail usage). Overage billed at 1.2× retail rate. Credit-pack purchases ($10–500) for bursty investigations.
+Credits unit: **1 credit = $0.01 retail** (marked up ~3× over underlying cost). Credit-pack top-ups $10-$500 available. Overage at 1.2× retail. No tier requires sales contact, contract negotiation, or approval workflow. Stripe Checkout to dashboard in < 60 seconds.
 
-### 2.4 Compliance posture (B2 — pragmatic)
+**Deferred tiers (add only if market pulls):**
+- Compliance / Due Diligence ($1,500+/mo) — add when first inbound compliance customer arrives; defer SOC 2 until they commit.
+- Team (multi-seat + shared cases) — add when ≥ 50 paying users request it.
+- Agency / reseller — add if three or more asks.
 
-**We will:**
-- Aggregate public-web data permitted by source-of-record ToS.
-- Query licensed paid APIs with proper commercial contracts.
-- Passive recon (DNS, cert transparency, WHOIS, OSINT datasets).
-- Social media *public* data through each platform's official or licensed commercial-research API where available; fall back to humane, rate-limited scraping for platforms with research-friendly ToS.
-- Provide chain-of-custody audit trails on every artifact (hash, timestamp, source URL, retrieval method).
+### 3.4 Compliance posture
 
-**We will not:**
-- Bypass authentication walls, CAPTCHAs, or rate-limit evasion of prohibited platforms.
-- Aggregate breached credential data in plain text (hashed/partial only; links to HIBP-style services).
-- Store PII beyond what the user explicitly ingested for a case.
-- Serve customers in sanctioned jurisdictions (OFAC screening on sign-up).
-- Tolerate stalking, harassment, doxing as use cases (enforced AUP + human review escalation).
-
-**Legal baseline:**
-- SOC 2 Type I within 12 months, Type II within 24.
-- GDPR- and CCPA-compliant DSAR flow (customers can export/delete their case data).
-- Published Acceptable Use Policy + KYC-lite sign-up (verified email, payment method, attestation).
+- **Acceptable Use Policy (AUP)** enforced programmatically (anomaly detection on usage patterns, red-flag query review, account suspension for stalking/doxing/harassment).
+- **No KYC beyond verified email + payment method** for Free and Hunter tiers. Light KYC attestation added for Operator.
+- **GDPR + CCPA DSAR flow** built in from Phase 1 (users can export / delete their case data within 30 days).
+- **OFAC screening** on sign-up (reject sanctioned-jurisdiction customers automatically).
+- **Federated learning privacy guarantees published** — differential privacy ε budgets, data flow diagrams, what leaves the tenant boundary. Living document.
+- **SOC 2 and ISO 27001 explicitly deferred** until an inbound paying customer demands certification and is willing to fund the ~$40K cost.
 
 ---
 
-## 3. System Architecture — Layered View
+## 4. The Compounding Inference Architecture
+
+Six systems. Same as rev. 3. **Sequenced for solo-founder execution**: hypergraph + distributional edges in Phase 1, the rest arrive in their simplest-possible form between Phase 2 and Phase 3.
+
+### 4.1 World Model
+
+**What it is:** a learned probabilistic model over the distributions of entities, relationships, and behaviors observed across platform history. Answers questions like "given this address's topological signature, what's P(mail-drop | observation)?"
+
+**Ships:** Phase 2 v0.5 (structural layer only — GraphSAGE inductive embeddings, ~15 role categories across top 5 entity types, cold-started from ~15K labeled examples curated by Jason from public data: OFAC designations, FinCEN shell indicators, known typosquat domain sets, published bounty-hunter writeups, academic datasets). Phase 3 v1.0 adds behavioral layer (transformer over temporal event sequences). Cold-start data realism has been right-sized — 15K is achievable solo; 100K was not.
+
+**Why solo-feasible:** GraphSAGE training on 15K labeled examples fits a single A10G GPU overnight on Fly.io GPU or on a cheap spot instance. Continuous training is the Ray cluster job (Phase 2). Incumbents can't copy because they lack cross-tenant longitudinal data.
+
+### 4.2 Federated Pattern Learning
+
+Cross-tenant learning with cryptographic privacy. Same three channels as rev. 3.
+
+**Channel A (always on, no opt-out):** fully aggregated structural statistics with differential privacy (ε ≤ 1.0). Degree distributions, edge-type frequencies, temporal velocities. Feeds World Model's structural layer.
+
+**Channel B (default on, explicit opt-out):** de-identified meta-features from resolved cases. No PII, no tenant IDs, no entity identifiers — only "a path of type [X→Y→Z] with confidence profile [0.9, 0.7, 0.8] was later verified as a true positive." Aggregated via secure aggregation (Flower + homomorphic sum). Feeds Adversary Library discovery and retrieval strategy compilation.
+
+**Channel C (opt-in only):** full case trajectories, k-anonymized at k≥20, pseudonymized, with 15% credit rebate. Feeds Policy Network (Phase 3). Explicit, contractual, documented. *Legal review required before ship — the rebate-for-consent structure needs GDPR compatibility check.*
+
+**Ships:** Phase 2 (Channels A + B with DP activation, pending independent crypto audit). Channel C activation deferred to Phase 3 once legal review clears and trajectory volume justifies.
+
+### 4.3 Predictive Temporal Layer
+
+Continuously forecast graph evolution, surface missing edges, support counterfactual queries.
+
+**Ships:** Phase 2 v1.0 — continuous TGN training per-tenant (memory-efficient 2026-era variants), hourly background missing-link scan, arrival-time distribution on predicted edges. Counterfactual reasoning is a Phase 3 research item — spec says "available" but v1 may be limited; we under-promise publicly until it works.
+
+**Why this matters for bounty hunters:** "the tool found a predicted subdomain that materialized 12 days later with the expected TLS cert" is a Hacker News post waiting to happen. Shadow infrastructure prediction is exactly this buyer's pain.
+
+### 4.4 Adversary Behavior Library
+
+Curated library of adversary playbooks: identity rotation, shell-company construction, sock-puppet topologies, typosquat clusters, subdomain takeover patterns, orphaned-cloud-resource fingerprints, document-laundering chains, beneficial-owner obfuscation.
+
+**Ships:**
+- **Phase 1 v0:** 20 hand-curated playbooks, written by Jason, drawing on FinCEN enforcement actions, published bounty writeups, Unit 42 / Mandiant adversary reports, Bellingcat case studies, FATF typologies. Each playbook is a parameterized subgraph template + distinguishing features + reference cases + writeup.
+- **Phase 2 v1.0:** 60+ playbooks via combination of Jason curation + community contribution (GitHub PRs to a playbook repo, Apache-2.0 licensed) + automated discovery from Channel B meta-features (clusters of recurring path patterns promoted through human review).
+- **Phase 3 v2.0:** 150+ playbooks, continuous discovery pipeline mature.
+
+**Subgraph matching:** approximate match via VF3 algorithm + neural subgraph matcher, run on every material graph write. Matches above threshold flagged to investigator with "this looks like [playbook]; N similar cases historically resolved as [outcome]."
+
+**Why this is the most marketable feature:** Every bounty hunter's mental model for recon is "find what the org is hiding." The Adversary Library operationalizes that directly. Published playbooks become a massive content asset — each one is a blog post + Twitter thread + potential conference talk.
+
+### 4.5 Investigator Policy Network
+
+Next-action model trained on decision trajectories from resolved cases. Imitation learning Phase 3 v1.0; RL fine-tuning Phase 3+ v2.0.
+
+**Ships:** Phase 3 v1.0 (months 13-18). Requires ~10K+ opt-in resolved trajectories (Channel C) — realistic given Phase 2 user growth. Deployed as "second voice" alongside Claude Advisor at Plan/Pivot checkpoints.
+
+**Honest sizing:** spec no longer promises "strictly dominates top investigators" at v1.0. That's a v2.0+ claim with verdict-reward RL fine-tuning and volume > 100K trajectories.
+
+### 4.6 Hypergraph + Probabilistic Data Model
+
+Data model substrate. **Ships in Phase 1** — this is a foundational choice that cannot be retrofitted later without massive migration cost. Everything else in §4 assumes this substrate.
+
+**Hypergraph:** real investigative relationships are N-ary. "A introduced B to C at location D on date E while employed by F" is one semantic fact, not six binary edges. Emulated on FalkorDB via typed "event nodes" with typed participant-edges.
+
+**Distributional edges:** each edge carries a posterior distribution (Bernoulli for existence, Normal/Beta for continuous attributes, Dirichlet for multi-valued priors) rather than a scalar confidence. Path-finding propagates uncertainty properly. Verdicts produce calibrated probabilities with credible intervals.
+
+**Performance commitment:** if p95 query latency on hyperedge-heavy operations exceeds 200ms on tenants ≥ 1M nodes during Phase 1, TypeDB migration accelerates into Phase 2 rather than Phase 3. Measurement-contingent, not hand-wavy.
+
+---
+
+## 5. System Architecture — Layered View
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  User's LLM client (Claude Desktop / Cursor / ChatGPT)      │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ MCP (stdio or Streamable HTTP)
-┌─────────────────────────▼───────────────────────────────────┐
-│  Thin local MCP client (TS) — auth + tool proxy             │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ HTTPS (signed requests)
-┌─────────────────────────▼───────────────────────────────────┐
-│  Edge: Cloudflare (WAF, rate-limit, Turnstile)              │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│  Product API (Bun + TS + ElysiaJS)                          │
-│  - Auth / billing / case mgmt / credit metering             │
-│  - MCP-over-HTTP endpoint                                   │
-│  - REST API for power users                                 │
-└──┬──────────────────┬──────────────────┬────────────────────┘
-   │                  │                  │
-   │                  │                  │
-┌──▼────────────┐ ┌───▼────────────┐ ┌───▼────────────────────┐
-│ Tool workers  │ │ Browser        │ │ Python workers         │
-│ (Go)          │ │ workers (Node) │ │ (FastAPI + uv)         │
-│ PD libs,      │ │ Playwright +   │ │ holehe, maigret,       │
-│ DNS, HTTP,    │ │ Nodriver +     │ │ ghunt, snscrape,       │
-│ cert transp.  │ │ Camoufox       │ │ instaloader-specifics  │
-└──┬────────────┘ └───┬────────────┘ └───┬────────────────────┘
-   │                  │                  │
-   └──────────────────┴──────────────────┘
+User's LLM client (Claude Desktop / Cursor / Cline / ChatGPT)
+        │ MCP (stdio or Streamable HTTP)
+        ▼
+Thin local MCP client (TS) — auth + tool proxy
+        │ HTTPS (signed)
+        ▼
+Edge: Cloudflare (WAF, Turnstile, R2 edge)
+        │
+        ▼
+Product API (Bun + TS + ElysiaJS)
+  - Auth / billing (Stripe) / credit metering
+  - MCP-over-HTTP + REST + CLI API endpoints
+  - LLM Gateway (Anthropic / OpenRouter / BYOK)
+        │
+   ┌────┴──────┬──────────────┬─────────────────┐
+   ▼           ▼              ▼                 ▼
+Tool workers  Browser      Python workers    Stealth HTTP
+(Go + PD    workers       (GLiNER, Jelly-   (rnet / JA4+)
+ libs)      (PW + Nodriver  fish-8B, holehe,
+            + Camoufox)     maigret, ghunt)
+   │           │              │                 │
+   └───────────┴──────────────┴─────────────────┘
                       │
-                      │ Tool-result protocol (typed JSON, signed)
+                      ▼
+Ingest / Entity Resolution pipeline
+  GLiNER-Relex → Jellyfish-8B → Claude Haiku via BAML (tiered)
+  Splink probabilistic linkage (per-tenant + federated warm-start)
+  libpostal, libphonenumber, tldextract, ens-normalize
                       │
-┌─────────────────────▼───────────────────────────────────────┐
-│  Ingest / Entity Resolution pipeline                        │
-│  - GLiNER + GLiNER-Relex (fast deterministic NER+RE)        │
-│  - Claude Haiku 4.5 via BAML (ambiguous cases)              │
-│  - libpostal, libphonenumber, tldextract normalizers        │
-│  - Splink probabilistic record linkage (dedupe + link)      │
-└─────────────────────┬───────────────────────────────────────┘
+                      ▼
+┌──────────────────────────────────────────────────────────┐
+│ COMPOUNDING INFERENCE LAYER                              │
+│   World Model ◄─ Federated Aggregator (DP) ─► Adversary │
+│        ▲              ▲                        Library  │
+│        │              │                         ▲       │
+│        Predictive  Policy Network ──────────────┘       │
+│        Temporal    (Phase 3)                            │
+└──────────────────────────────────────────────────────────┘
                       │
-┌─────────────────────▼───────────────────────────────────────┐
-│  Knowledge layer                                            │
-│  ┌──────────────────────────────────────┐                   │
-│  │ FalkorDB (multi-tenant graph,        │ ◄── Graphiti      │
-│  │ GraphBLAS engine, native vectors,    │     (bitemporal   │
-│  │ Cypher)                              │      layer)       │
-│  └──────────────────────────────────────┘                   │
-│  ┌──────────────────────────────────────┐                   │
-│  │ PostgreSQL 16 (OLTP + evidence meta) │                   │
-│  │ + pgvector + pgvectorscale           │                   │
-│  └──────────────────────────────────────┘                   │
-│  ┌──────────────────────────────────────┐                   │
-│  │ Cloudflare R2 (immutable artifacts)  │                   │
-│  └──────────────────────────────────────┘                   │
-│  ┌──────────────────────────────────────┐                   │
-│  │ DragonflyDB (cache + rate limit)     │                   │
-│  └──────────────────────────────────────┘                   │
-└─────────────────────┬───────────────────────────────────────┘
+                      ▼
+Knowledge layer
+  FalkorDB (multi-tenant hypergraph, distributional edges)
+  Graphiti (bitemporal layer)
+  Postgres 16 + pgvector + pgvectorscale (OLTP, evidence, embeddings, trajectory logs)
+  Cloudflare R2 (immutable artifacts)
+  DragonflyDB (cache + rate-limit + queue)
                       │
-┌─────────────────────▼───────────────────────────────────────┐
-│  Retrieval & Reasoning layer                                │
-│  - Hybrid retrieval (BM25 + vector + graph walk)            │
-│  - HippoRAG 2 personalized-PageRank pattern                 │
-│  - Community summaries (Leiden + LLM synthesis)             │
-│  - ColBERTv2 + Cohere Rerank 3 final stage                  │
-│  - RRF fusion                                               │
-└─────────────────────┬───────────────────────────────────────┘
+                      ▼
+Retrieval & Reasoning layer
+  Hybrid (BM25 + vector + graph-walk)
+  HippoRAG 2 substrate + PathRAG pruning + OG-RAG gating
+  World-model-conditioned ranking (Phase 2+)
+  ColBERTv2 + Cohere Rerank + RRF
                       │
-┌─────────────────────▼───────────────────────────────────────┐
-│  Agent orchestration                                        │
-│  - LangGraph (TS) state machine                             │
-│  - Claude Advisor Tool (Opus 4.7 + Haiku 4.5)               │
-│  - BAML typed outputs                                       │
-│  - 8 Connection-Finding primitives (MCP tools)              │
-└─────────────────────────────────────────────────────────────┘
-
-Observability sidecar: OpenTelemetry → Grafana Cloud (traces, logs, metrics) + Sentry (errors).
-Job substrate: River (Go) on Postgres for background scans, long-running investigations, scheduled retrieval.
+                      ▼
+Agent orchestration
+  LangGraph state machine · BAML typed I/O · DSPy-compiled prompts
+  Claude Advisor (Opus 4.7 + Haiku 4.5) via LLM Gateway
+  Policy Network second voice (Phase 3)
+  12 Connection-Finding primitives exposed as MCP tools
 ```
 
----
-
-## 4. Data Model
-
-### 4.1 Canonical entity types (v1)
-
-Every extracted atom resolves to one of these typed nodes. Types are extensible via a registry.
-
-| Entity | Key attributes | Normalizer |
-|---|---|---|
-| `Person` | name (parsed), DOB (ISO date + precision: `year` / `year-month` / `full` + confidence), aliases[] | `nameparser` |
-| `EmailAddress` | local-part, domain, canonical | built-in |
-| `PhoneNumber` | E.164, country, carrier (inferred) | `libphonenumber` |
-| `PhysicalAddress` | parsed components, lat/lng, confidence | `libpostal` + geocoder |
-| `Domain` | apex, subdomain, IDN-normalized | `tldextract` + `idna` |
-| `IPAddress` | v4/v6, ASN, geolocation | `ipinfo`/`ip2asn` |
-| `Organization` | legal name, jurisdiction, registration ID | custom |
-| `SocialAccount` | platform, handle, URL, display name | per-platform |
-| `Document` | SHA-256, MIME, exif, source | built-in |
-| `Image` | SHA-256, perceptual hash, CLIP embedding | `imagehash` + CLIP |
-| `CryptoWallet` | chain, address, format, ENS | `ens-normalize` + checksums |
-| `Event` | type, timestamp, location, participants | custom |
-| `Claim` | subject, predicate, object, source, confidence | — |
-
-### 4.2 Edge types (sample)
-
-`HAS_EMAIL`, `HAS_PHONE`, `LIVES_AT`, `OWNS`, `CONTROLS`, `EMPLOYED_BY`, `SHARES_ADDRESS_WITH`, `APPEARS_IN_BREACH_WITH`, `MENTIONED_WITH`, `SAME_PERSON_AS` (probabilistic), `REGISTERED_DOMAIN`, `AT_LOCATION`, `TRANSACTED_WITH`, `CITED_IN`, `CONTRADICTS`.
-
-Every edge carries:
-- `confidence` (0.0–1.0, calibrated — not raw)
-- `valid_from`, `valid_to` (world-time)
-- `observed_at`, `superseded_at` (system-time — bitemporal)
-- `source` (Claim ID → provenance chain)
-- `method` (how the edge was derived — extraction, inference, user-asserted)
-
-### 4.3 Chain-of-custody / Claim model
-
-Every assertion in the graph is backed by a `Claim` that records:
-- Raw artifact hash (pointer to R2 object)
-- Retrieval timestamp (system-time)
-- Tool that produced it + tool version
-- Proxy/IP used (for reproducibility + dispute)
-- Agent reasoning trace ID (for LLM-derived claims)
-- User who initiated the investigation
-
-This is court-admissible-grade provenance. It is also *the* feature journalists need to publish.
-
-### 4.4 Bitemporal semantics (Graphiti layer)
-
-- **Valid-time**: when the fact was true in the world. "John lived at 123 Main St from 2022-03 to 2024-07."
-- **System-time**: when we learned it. "We ingested this fact on 2026-04-22 at 14:30 UTC from source X."
-- Every node and edge has four timestamps. Contradiction detection is a trivial bitemporal query: two edges with overlapping valid-time but incompatible attributes, observed from different sources.
+Observability: OpenTelemetry → Grafana Cloud + Sentry.
+Jobs: River (Go) on Postgres.
+Training (Phase 2+): Ray cluster on GCP for World Model + TGN. A10G for TGN; H100 rented hourly for rare heavy training runs.
 
 ---
 
-## 5. Entity Resolution (ER) Pipeline
+## 6. Data Model
 
-The ingest pipeline that makes everything else work.
+### 6.1 Canonical entity types
 
-### 5.1 Stages
+13 types from rev. 2 + 2 new from rev. 3:
 
-1. **Extract (tiered)** — three-tier routing based on input complexity:
-   - **Tier 1 (~80%):** **GLiNER + GLiNER-Relex** — deterministic encoder-only NER + relation extraction. ONNX runtime, hardware-cheap. Confidence scores native.
-   - **Tier 2 (~18%):** **Jellyfish-8B** (Llama-3 base) self-hosted on GPU. Instruction-tuned for entity matching / data preprocessing. ~0.08s per instance on A100. Rivals GPT-4 on EM benchmarks at a fraction of the cost. Handles ambiguous pair-decisions and medium-context cases.
-   - **Tier 3 (~2%):** **Claude Haiku 4.5 via BAML** — only invoked when reasoning over long context or cross-document inference is required. Typed outputs.
-2. **Normalize** — domain-specific normalizers (addresses via `libpostal`, phones via `libphonenumber`, domains via `tldextract` + `idna`, crypto via `ens-normalize`) produce canonical forms.
-3. **Candidate-match** — Splink generates candidate pairs using blocking rules (e.g., same domain, same phone prefix, nearby embedding).
-4. **Probabilistic scoring** — Fellegi-Sunter m-probabilities and u-probabilities per comparison vector, producing match-weight per candidate pair.
-5. **Thresholded merge** — three outcomes: auto-merge (above threshold), review-queue (ambiguous), reject.
-6. **Graph-write** — transactional write to FalkorDB + Graphiti with full provenance.
+- `Person`, `EmailAddress`, `PhoneNumber`, `PhysicalAddress`, `Domain`, `IPAddress`, `Organization`, `SocialAccount`, `Document`, `Image`, `CryptoWallet`, `Event`, `Claim`
+- `Hyperedge` — first-class N-ary relation node (new in rev. 3)
+- `Playbook` — adversary library template reference (new in rev. 3)
 
-### 5.2 Per-tenant models
+**Required field on every entity type:** `world_model_scores` — Categorical distribution over role labels. Written at ingest (initially flat/uniform in Phase 1; informed by World Model in Phase 2+). Queryable. First-class.
 
-Splink models are tenant-scoped — a PI investigating industry A has different match weights than one investigating industry B. Base models ship pre-trained; tenants implicitly train through merge/reject decisions.
+### 6.2 Edge types
 
-### 5.3 SLA
+All edge types from rev. 2, plus:
+- `PARTICIPATES_IN` (entity → Hyperedge)
+- `MATCHES_PLAYBOOK` (entity or Hyperedge → Playbook, with match-confidence distribution)
+- `PREDICTED_TO_EXIST` (entity → entity, with arrival-time distribution) — Phase 2+, written by the Predictive Temporal layer
 
-- p95 ingest latency (single artifact → graph, per-tenant graph ≤ 10M nodes): **< 2s**
-- Throughput per worker: **≥ 50 artifacts/s**
-- ER precision target: **≥ 0.98** (we favor precision over recall — a false merge corrupts the entire tenant graph)
-- ER recall target: **≥ 0.85** (recall slack goes into the review queue)
-
----
-
-## 6. Retrieval & Reasoning
-
-### 6.1 Multi-strategy retrieval
-
-The agent chooses among six retrieval strategies per sub-query:
-
-| Strategy | Engine | Best for |
-|---|---|---|
-| Direct entity lookup | Cypher on FalkorDB | Known identifiers |
-| Semantic text search | pgvector + pgvectorscale (StreamingDiskANN) + jina-embeddings-v3 | Fuzzy description match |
-| Image similarity | pgvector + OpenCLIP embeddings | Reverse-image / face / scene |
-| k-hop graph walk | FalkorDB weighted paths | "How are X and Y connected?" |
-| Community retrieval | Leiden clustering + LLM community summaries | "What's the broader network?" |
-| Bitemporal query | Graphiti | "Were X and Y both at Z in 2024?" |
-
-Results from all engaged strategies are fused via **Reciprocal Rank Fusion**, then reranked with **ColBERTv2** and **Cohere Rerank 3** (fallback: `jina-reranker-v2`).
-
-### 6.2 Composite reasoning: HippoRAG 2 + PathRAG + OG-RAG
-
-We compose three SOTA retrieval-augmentation patterns that together dominate single-pattern approaches. No competitor ships this combination.
-
-**HippoRAG 2** — substrate
-- Build a document→entity bipartite layer atop the FalkorDB graph.
-- Personalized PageRank from query-seed entities weighted by embedding similarity.
-- Retrieve evidence from highest-scoring nodes' associated documents.
-- Baseline: ~87-91% evidence recall, 10-30× cheaper multi-hop than vanilla GraphRAG.
-
-**PathRAG** — path pruning
-- After `bounded_pathfind` or HippoRAG returns candidate paths, apply flow-based pruning (PathRAG algorithm) to keep only information-bearing paths.
-- Cuts context tokens by ~44% without accuracy loss.
-- Directly improves our LLM cost per investigation (Claude Advisor token spend is the largest variable cost).
-
-**OG-RAG** — ontology grounding
-- Our typed entity + edge ontology (§4.1, §4.2) is already schema-constrained.
-- Apply OG-RAG's schema-constrained extraction during retrieval and synthesis — LLM outputs that don't validate against the ontology are rejected/retried.
-- Reduces hallucinations ~40% on structured domains.
-
-### 6.3 Why this wins
-
-Benchmark published results (SOTA April 2026):
-- Vanilla RAG multi-hop recall: ~40-55%
-- GraphRAG multi-hop recall: ~70-80%
-- HippoRAG 2 multi-hop recall: **87-91%** at **10-30× lower cost** than GraphRAG
-- **Our composite target: ≥ 90% recall at ~50% of HippoRAG 2 context tokens** (via PathRAG pruning) with ~40% fewer hallucinations (via OG-RAG schema gating). This is the retrieval contract we hold ourselves to, measured on MuSiQue + 2WikiMultiHop + our own OSINT benchmark harness (§13, §9.5).
-- Production baseline for enterprise RAG is still hybrid (~65-75%). We're choosing to skate ahead.
-
----
-
-## 7. The Connection-Finding Engine (Core Differentiator)
-
-Ten typed MCP tools that compose into investigation strategies no competitor exposes.
-
-### 7.1 `generate_hypotheses(seed_a, seed_b)`
-LLM proposes ranked connection hypotheses ("shared address," "same phone in different breaches," "temporal coincidence at location," "shell-company control chain"). Output: list of hypothesis objects with testable predicates.
-
-### 7.2 `bounded_pathfind(seed_a, seed_b, max_hops=4, edge_filters, min_confidence=0.6)`
-Weighted shortest-paths over FalkorDB; weights = `-log(edge_confidence)` so shortest path = maximum-likelihood path. Returns up to N paths with per-edge citations.
-
-### 7.3 `probabilistic_path_score(path)`
-Product of edge confidences with Bayesian smoothing on prior evidence density. Filters chain-of-Chinese-whispers noise.
-
-### 7.4 `community_co_membership(seed_a, seed_b, threshold=0.7)`
-Leiden clustering at multiple resolutions; returns communities containing both seeds with density and overlap scores. Catches "same network, no direct edge."
-
-### 7.5 `temporal_coincidence(entities[], location_radius_m, time_window)`
-Bitemporal query via Graphiti: did any subset of these entities share a location within the radius/window? Returns ranked coincidence events with evidence.
-
-### 7.6 `embedding_proximity_without_edges(seed, k=20)`
-Top-k semantically similar entities with **zero graph path** within 3 hops. Surfaces likely aliases, sock puppets, shell identities.
-
-### 7.7 `structural_role_mining(entity)`
-GraphSAGE-style structural embeddings. Detects "nexus nodes" (addresses with many LLCs, emails in many breaches, phones across many accounts). Output: role-similarity to known patterns (e.g., "looks like a mail-drop address," "looks like a burner email").
-
-### 7.8 `contradiction_detect(entity)`
-Bitemporal reasoning: identifies overlapping-valid-time edges with contradictory values from distinct sources. Ranks by significance (recency, source credibility, magnitude of discrepancy).
-
-### 7.9 `predict_missing_link(entity, relation_type, top_k=10)`
-Knowledge-graph-embedding-based link prediction (RotatE + hybrid semantic-structural model, with TGN temporal augmentation in Phase 2). Given an entity and a target relation type, ranks the most probable targets that *should* have that edge based on graph structure and semantics. Used for **proactive lead generation** — e.g., "given what we know about John Smith, which phone numbers in the graph are most likely his?" Returns ranked candidates with confidence and supporting structural features.
-
-### 7.10 `cross_source_corroboration(claim, min_sources=3)`
-Given any assertion (from a tool, the user, or another primitive), triangulates supporting and contradicting evidence across all indexed sources. Sources are weighted by a credibility tier (tier S: official records / court / regulatory / **C2PA-signed or Amber-Authenticated media**; tier A: major media / industry registry; tier B: social / commercial APIs; tier C: self-reported / user-contributed). Returns a Bayesian-smoothed confidence score and a citation pack. **Journalist-grade verification primitive** — this is what goes into the evidence bundle for court or publication. Cryptographically-provenanced media (C2PA / Amber Authenticate) receives an elevated weight when present; absence does not penalize older or informal sources.
-
-### 7.11 Composition
-
-The agent composes these primitives. Example investigation template **"Are these two people the same?"**:
-1. `structural_role_mining(A)` + `structural_role_mining(B)` — pattern similarity
-2. `embedding_proximity_without_edges(A)` → does B appear?
-3. `bounded_pathfind(A, B, max_hops=3)` — direct connections
-4. `community_co_membership(A, B)` — shared network
-5. `contradiction_detect` on each side — lies/inconsistencies
-6. `cross_source_corroboration` on the "same person" claim — evidence triangulation
-7. LLM synthesizes a ranked verdict with evidence
-
-Example **"What else should we look at?"**:
-1. `predict_missing_link(seed, relation_type=*)` → top-k predicted edges per relation
-2. Filter by high structural confidence + no existing edge
-3. Surface as "leads the agent thinks are worth investigating" panel
-
----
-
-## 8. Agent Orchestration
-
-### 8.1 LangGraph state machine (orchestration)
-
-States: `Plan → Collect → Resolve → Traverse → Hypothesize → Verify → Synthesize → Report`.
-
-Each state has a Claude Advisor invocation (Opus 4.7 advisor + Haiku 4.5 executor) and emits typed transitions. The whole run is replayable from the event log.
-
-### 8.2 DSPy module per node (prompt optimization)
-
-Each LangGraph node's prompt logic is implemented as a **DSPy module**. Rationale (SOTA pattern as of 2026):
-- DSPy compiles prompts against labeled eval traces, delivering 99%+ reliability on each reasoning step.
-- Cross-model portability: the same LangGraph pipeline can run on Claude, GPT-5.4, or Llama 4 with zero prompt rewrites — important for BYOK customers and future pricing leverage.
-- Upfront compilation cost (100-500 LLM calls per module) is paid once per release; amortized over millions of investigations.
-
-### 8.3 LLM Gateway & Claude Advisor Tool
-
-All LLM calls route through an internal **LLM Gateway** that abstracts the provider. Three backends day-one, extensible to any future provider:
-
-| Backend | Role |
-|---|---|
-| **Direct Anthropic** | Primary — Claude Advisor Tool (Opus 4.7 advisor + Haiku 4.5 executor, Sonnet 4.6 for medium tasks) |
-| **OpenRouter** | Multi-model router for (a) cost-sensitive sub-tasks, (b) continuous benchmark-driven evaluation of new models as they release (GPT-5.4, Gemini 2 Pro, Llama 4, DeepSeek R2, Qwen 3, Kimi, etc.), (c) BYOK customers who prefer OpenRouter as their gateway |
-| **BYOK direct** | Premium tier — customer-provided API keys for Anthropic, OpenAI, or any provider, routed through the same gateway |
-
-The gateway is configured per-call-site with:
-- A **preferred model** (e.g., "Claude Sonnet 4.6")
-- A **fallback chain** (graceful degradation on outage or rate-limit)
-- A **cost ceiling** (hard cap; falls back to cheaper model if the preferred would exceed)
-- A **benchmark channel tag** — tagged calls also fire in parallel against alternate models and log results to the evaluation store (off in production, on during benchmark runs)
-
-Advisor guidance is solicited at each plan/pivot checkpoint (high-value, low-frequency); Haiku executes routine work. Expected per-investigation LLM cost: **$0.30-$2.50** depending on depth, down from ~$8-15 in a pure-Opus setup. The gateway ensures this cost tracks downward over time as cheaper open-source models pass our benchmark bar.
-
-### 8.4 BAML typed outputs
-
-Every LLM call returns a typed, validated object via BAML. No JSON-parsing roulette, no hallucinated fields. BAML schemas are the interface contract between the agent and the graph-writer. BAML schemas are also the inputs to DSPy's signature system — the two toolchains compose cleanly.
-
-### 8.5 Audit trail
-
-Every state transition, tool call, retrieval, and LLM output is written to the investigation's event log in Postgres + traced via OpenTelemetry. The final "Report" includes a collapsible reasoning trace with citations.
-
----
-
-## 9. Self-Evolving Knowledge Engine (The Moat)
-
-The MCP + tool catalog is distributable and commoditizable. The **continuously-learning bitemporal knowledge engine behind it is not**. This section defines the architectural commitments that make the system strictly smarter with every investigation, every new data source, and every stronger LLM.
-
-### 9.1 Three-tier knowledge architecture
-
-```
-Tier 3: Public Reference Graph (global, read-only, shared across all tenants)
-  OpenCorporates, OpenSanctions, GDELT, cert transparency, passive DNS,
-  public breach index, SEC EDGAR, Wayback, Common Crawl. One ingestion
-  pipeline, every customer benefits immediately.
-
-Tier 2: Pattern Library (global, privacy-preserving, shared across tenants)
-  Structural patterns, model weights, priors — never raw case data.
-  Feeds the reasoning and ER layers; recomputed via privacy-preserving
-  aggregation from Tier 1. See §9.3.
-
-Tier 1: Case Graphs (per-tenant, private, encrypted at rest and in transit)
-  Individual investigations. FalkorDB tenant-scoped graph + Graphiti
-  bitemporal layer + Postgres RLS-isolated metadata. Never leaves the
-  tenant boundary except as fully-anonymized aggregates into Tier 2.
+Every edge carries a posterior distribution (not scalar confidence):
+```json
+{
+  "edge_type": "LIVES_AT",
+  "from": "person_123", "to": "address_456",
+  "posterior": {
+    "existence": { "type": "Bernoulli", "p": 0.87, "ci95": [0.72, 0.95] },
+    "valid_from": { "type": "Normal", "mu": "2023-04-15", "sigma_days": 30 },
+    "valid_to":   { "type": "Normal", "mu": "2025-11-02", "sigma_days": 90 }
+  },
+  "observed_at": "2026-04-22T14:30:00Z",
+  "superseded_at": null,
+  "sources": ["claim_789", "claim_790"],
+  "method": "federated-match+splink-v3"
+}
 ```
 
-### 9.2 Five learning loops (continuously active)
+### 6.3 Chain-of-custody Claim model
 
-Each loop has an explicit input signal, output artifact, cadence, and success metric. All loops are instrumented from day one; activation threshold (how much data must accumulate before the loop's output is trusted) is separately configurable per loop.
+Every assertion backed by a `Claim`: raw artifact hash (R2 pointer), retrieval timestamp (system-time), tool + version, proxy used, agent reasoning-trace ID, initiating user. Evidence bundle export (Phase 2) produces Merkle-rolled manifest.
 
-| # | Loop | Input signal | Output artifact | Cadence | Success metric |
-|---|---|---|---|---|---|
-| 1 | **ER feedback** | Human decisions on review-queue items + downstream merge/split corrections | Updated Splink m/u probabilities per entity type; updated Jellyfish-8B LoRA adapters | Weekly batch | Precision ≥ 0.98 maintained while recall climbs |
-| 2 | **Hypothesis outcome** | Each `generate_hypotheses` result labeled confirmed / refuted / inconclusive at investigation close | Hypothesis type priors (Bayesian) per seed-type combination | Daily batch | Mean time to confirmed lead drops QoQ |
-| 3 | **Path quality** | Paths from `bounded_pathfind` marked as "led to insight" / "dead end" by user or agent | Edge-type weights; path-scoring function coefficients | Daily batch | Mean rank of insight-containing path in top-10 |
-| 4 | **Retrieval strategy** | Which of the 6 retrieval strategies (§6.1) produced the cited evidence | DSPy-compiled strategy selector conditioned on query archetype | Weekly batch | Retrieval precision@k on held-out benchmark |
-| 5 | **Model benchmark** | Automated full-benchmark run against every new model release | Gateway routing defaults; per-call-site preferred-model config | On every major model release (< 24h SLA) | Cost per correct investigation trends down over time |
+### 6.4 Bitemporal semantics
 
-### 9.3 Privacy model for cross-tenant learning
-
-Three buckets, each governed by explicit user-facing policy:
-
-**Bucket A — default-on, no opt-out (fully anonymized statistical aggregates):**
-- Splink m/u probability updates derived from aggregate merge decisions, differential-privacy-smoothed with ε ≤ 1.0
-- Retrieval-strategy effectiveness stats (query archetype → best strategy)
-- DSPy prompt compilations against synthetic eval traces (generated from schema, not user data)
-- Model benchmark scores
-
-**Bucket B — default-on, explicit opt-out (anonymized pattern extraction):**
-- Hypothesis type priors — e.g., "when seed_a is a Person and seed_b is an Organization, hypothesis type `shared_controlled_entity` panned out 34% of cases" (no case, no entity, no user identifiable)
-- Community structure priors — archetypes of communities (size, density, edge-type distributions) without node identities
-- Role-mining archetypes — vector archetypes for "mail-drop address", "burner phone", "shell-company cluster" without the underlying entities
-- Contradiction archetypes — patterns of contradictions (e.g., "voter records vs self-reported address conflicts 12% of the time") without the specific records
-
-**Bucket C — opt-in only (named or attributable contributions):**
-- Sharing specific detected patterns with attribution — e.g., a PI voluntarily contributing "this mail-drop address pattern I found worth flagging" to a community bulletin
-- Case-specific prompts or workflow recipes users want to share with the community
-- Team-level shared memory for multi-seat Team accounts (within-team only by default)
-
-The privacy policy, the AUP, and the onboarding flow all make the three buckets explicit. GDPR-DSAR flow includes the ability to withdraw past Bucket B contributions (Bucket A is statistically-irreversible by design).
-
-### 9.4 Self-healing memory
-
-Writing to the graph is not append-only. Three revision mechanisms:
-
-1. **Contradiction-driven revision** — when a new Claim overlaps-valid-time with an existing edge and contradicts it, the graph runs a revision workflow: the older Claim is superseded (system-time bounded), a new Claim added, and the revision itself becomes a first-class event that feeds Loop 2 (hypothesis outcomes learn from "we got this wrong" patterns too).
-
-2. **Confidence decay** — edges that are not re-corroborated across new ingestions lose confidence linearly over time (half-life configurable per edge type — phone numbers decay faster than birthdates). At tenant-configured threshold, decayed edges auto-prune to review-queue.
-
-3. **Retrospective re-extraction** — when a substantially improved extraction model ships (GLiNER 3.0, Jellyfish-13B, new Claude release passing our benchmark), archived artifacts are re-queued through the ER pipeline. Graph improves retroactively without new user action. Users see a "your case graph was enriched from model X upgrade" notice.
-
-### 9.5 Evaluation-first development
-
-Every component change gates on the OSINT benchmark:
-
-**Benchmark composition:**
-- MuSiQue (multi-hop QA) — 1K held-out items for retrieval regression
-- 2WikiMultiHop — 500 held-out items for composition reasoning
-- TGB / TGB-Seq — temporal reasoning regression
-- **Proprietary OSINT benchmark** — 50+ curated real-world investigation cases with known resolutions, graded automatically + spot-checked manually. Grows quarterly.
-- **Synthetic case generator** — procedurally generates investigation scenarios of configurable difficulty to continuously stress-test the system.
-
-**Gates:**
-- No retrieval-layer PR merges without meeting or exceeding the current benchmark.
-- No model swap activates in prod until it passes the benchmark for its tier.
-- Quarterly public benchmark report to customers — *"here's how much smarter we got this quarter"* — compounds the marketing story.
-
-### 9.6 The compounding thesis
-
-Every quarter the product should measurably improve on four curves:
-
-1. **Benchmark accuracy** (% of investigations resolved correctly on the fixed harness) — up
-2. **Cost per correct investigation** (total LLM + tool + infra cost) — down
-3. **Lead-generation precision** (`predict_missing_link` confirmed-hit rate) — up
-4. **Mean time to insight** (user-action minutes per investigation) — down
-
-These four curves are the entire business. A customer dashboard surfaces the quarter-over-quarter deltas so every user sees the compounding value they're paying for.
+Valid-time + system-time on every node and edge. Augmented in Phase 2+ by `predicted_arrival_time` on edges of type `PREDICTED_TO_EXIST`.
 
 ---
 
-## 10. Tool Catalog
+## 7. Entity Resolution Pipeline
 
-Organized by investigation phase. v1 targets **36 tools**; Phase 1.5 adds **4**; Phase 2 adds **~15**.
+Three-tier routing (unchanged from rev. 3):
 
-### v1 — Phase 1 (36 tools)
+1. **Tier 1 (~80%):** GLiNER + GLiNER-Relex — deterministic encoder-only NER + RE
+2. **Tier 2 (~18%):** Jellyfish-8B self-hosted — Llama-3 instruction-tuned for data preprocessing, ~0.08s/instance on A10G
+3. **Tier 3 (~2%):** Claude Haiku 4.5 via BAML — ambiguous long-context cases
 
-#### Domain / Infrastructure (8)
-1. `subfinder_passive` (PD Go lib)
-2. `dns_lookup_comprehensive` (dnsx lib)
-3. `whois_historical` (WhoisXML API)
-4. `cert_transparency_query` (crt.sh API)
-5. `asn_lookup` (Team Cymru + BGPView)
-6. `reverse_dns` (ptr records + historical)
-7. `domain_age_history` (SecurityTrails)
-8. `http_probe` (httpx lib — tech fingerprint, screenshot)
+Pipeline stages:
+1. Extract (tiered)
+2. Normalize (libpostal, libphonenumber, tldextract, ens-normalize)
+3. Candidate-match via Splink blocking rules
+4. Fellegi-Sunter probabilistic scoring (per-tenant model warm-started from federated base in Phase 2+)
+5. **World-model integration (Phase 2+):** candidate merges consult world model; high-Splink-weight merges with incompatible role-distributions auto-escalate to Tier 3
+6. Thresholded merge: auto-merge / review-queue / reject
+7. Transactional graph write to FalkorDB + Graphiti with full provenance
 
-#### Stealth HTTP layer (1 — foundational)
-9. `stealth_http_fetch` — JA4+ / TLS-fingerprint-matching HTTP client via `rnet` (Python). Impersonates real-browser TLS handshakes. Hits ~30-40% of Cloudflare/DataDome-protected sites at browser-free cost. Used internally by most other tools; also exposed directly for advanced users.
-
-#### Internet-connected devices / hosts (3)
-10. `shodan_search` (Shodan API)
-11. `censys_search` (Censys API)
-12. `port_scan_passive` (naabu lib, safe-mode)
-
-#### Person / Identity (6)
-13. `username_sherlock` (custom Go port of sherlock logic)
-14. `email_holehe` (Python worker)
-15. `email_breach_lookup` (HIBP + DeHashed)
-16. `phone_numverify` (NumVerify + libphonenumber)
-17. `google_account_ghunt` (Python worker)
-18. `people_public_records` (per-jurisdiction adapters)
-
-#### Social media (5)
-19. `instagram_public_profile` (instaloader-scoped)
-20. `twitter_snscrape_public` (snscrape)
-21. `linkedin_public_profile` (compliant commercial API partner)
-22. `reddit_api_query` (official Reddit API)
-23. `github_user_profile` (GitHub API)
-
-#### Leaks / Breach intelligence (3)
-24. `hibp_lookup` (HIBP v3)
-25. `intelx_search` (Intelligence X, commercial)
-26. `dehashed_search` (DeHashed, commercial)
-
-#### Corporate records + sanctions (3 — new in v1)
-27. `opencorporates_search` (OpenCorporates API — 200M+ companies, 120+ jurisdictions)
-28. `opensanctions_screen` (OpenSanctions — sanctions lists, PEPs, cross-links to OpenCorporates; uses **Nomenklatura** toolkit for data integration and cross-dataset identity matching beyond sanctions alone)
-29. `sec_edgar_filing_search` (SEC EDGAR — US public filings, historical)
-
-#### Content / Archives (3)
-30. `wayback_history` (Wayback API)
-31. `common_crawl_lookup` (Common Crawl index)
-32. `pdf_document_analyze` (extract text + entities + exif)
-
-#### Geospatial / Image (2)
-33. `reverse_image_search` (multi-backend: Yandex + TinEye + Bing Visual)
-34. `exif_extract_geolocate` (exiftool + geocoder)
-
-#### Meta (2)
-35. `tool_cost_estimate` — returns credit-cost estimate for a proposed tool-call plan before execution (helps the agent stay within user budget)
-36. `evidence_bundle_export` — packages case state into immutable evidence bundle (Merkle-tree rollup, signed manifest) for court/publication
-
-### Phase 1.5 additions (months 3-5)
-
-37. `gdelt_gkg_query` — GDELT Global Knowledge Graph 2.0 via BigQuery. Subjects across global media in 100+ languages, updated every 15min. Transformative for journalists.
-38. `deepfake_detect_media` — Reality Defender API for image/video/audio authenticity. Essential journalist tooling.
-39. `gdelt_visual_gkg_query` — GDELT's Visual GKG for image-in-news analysis.
-40. `hive_moderate_batch` — Hive AI for high-throughput content authenticity (team-tier feature).
-
-### Phase 2 additions (~15 tools)
-
-- **Audio OSINT:** `deepgram_transcribe_diarize` (ASR + speaker diarization), `deepgram_voice_clone_detect`, `whisper_transcribe_local` (BYOK tier)
-- **Face / identity verification:** `face_search_multi_backend` (FaceCheck.ID + Lenso.ai + Yandex, consent-gated with AUP enforcement)
-- **Crypto tracing:** `arkham_entity_lookup`, `arkham_fund_flow`, `breadcrumbs_bridge_trace`, `breadcrumbs_mixer_detect`, `etherscan_tx_history`, `solscan_tx_history`
-- **Dark web (partner):** `darkowl_search` (via DarkOwl API partnership)
-- **Advanced infra:** `silentpush_passive_dns`, `silentpush_iofa_feed`, `domaintools_iris_pivot`
-- **Corporate deep:** `companies_house_uk_search`, `dun_bradstreet_lookup` (premium only)
-- **Sanctions/adverse media:** `adverse_media_search` (aggregator across GDELT + major registries)
-- **Integrations:** `hunchly_sync` (read-only import of user's Hunchly cases), `maltego_transform_bridge` (export to Maltego graph format)
-
-### Phase 3 (deferred)
-
-- PimEyes deep face (if commercial access terms become tractable)
-- Chainalysis Reactor (only if enterprise tier launches)
-- Voice biometric matching at scale
-- Satellite imagery adapters (Sentinel Hub, Planet Labs)
-- Global court-records API (PACER, state courts) where feasible
-- **C2PA / Amber Authenticate media-provenance ingestion** — elevate cryptographically-signed media to tier-S evidence in `cross_source_corroboration` once adoption reaches critical mass (tracked vs Content Authenticity Initiative adoption curve)
+**SLAs:**
+- p95 ingest latency: < 2s (tenant graph ≤ 10M nodes)
+- Throughput: ≥ 50 artifacts/s per worker
+- Precision ≥ 0.98; Recall ≥ 0.85
+- World Model scoring: < 50ms sync path, < 500ms async path (Phase 2+)
 
 ---
 
-## 11. Infrastructure & Deployment
+## 8. Retrieval & Reasoning
 
-### 11.0 Scraping hierarchy (four-tier stealth ladder)
+### 8.1 Composite reasoning (HippoRAG 2 + PathRAG + OG-RAG)
 
-Each tool-level scrape attempt walks this ladder, stopping at the first tier that succeeds. This drives 80%+ of the infrastructure cost savings vs competitors who default to headless browsers.
+- **HippoRAG 2** — personalized-PageRank substrate (~87-91% multi-hop recall, 10-30× cheaper than vanilla GraphRAG)
+- **PathRAG** — flow-based path pruning (cuts context tokens ~44%)
+- **OG-RAG** — ontology-gated synthesis (~40% fewer hallucinations via schema-constrained outputs)
 
-| Tier | Tech | Cost / request | Hits | When used |
-|---|---|---|---|---|
-| 1 | **Direct HTTP** (Go stdlib, Python `httpx`) | ~$0 | Unprotected / public APIs | Default for most OSINT data sources |
-| 2 | **Stealth HTTP** (`rnet` with JA4+ impersonation) | ~$0 + proxy cost | ~30-40% of Cloudflare / DataDome sites | When Tier 1 is blocked at WAF/TLS layer |
-| 3 | **Playwright / Nodriver** (headless Chrome with CDP-direct + stealth patches) | ~$0.002 (compute) | ~50-70% of JS-heavy sites | When Tier 2 fails (CAPTCHA, behavioral) |
-| 4 | **Camoufox** (Firefox antidetect, scores 0% on CreepJS) | ~$0.005 (compute) + premium residential proxy | Near-100% of DataDome / Turnstile / Akamai-protected sites | Last resort — heavy anti-bot |
+### 8.2 Six retrieval strategies, agent-selected
 
-### 11.1 Runtime
+Direct entity lookup · semantic text search · image similarity (CLIP) · k-hop graph walk · community retrieval (Leiden + LLM summaries) · bitemporal query. Fused via RRF, reranked with ColBERTv2 + Cohere Rerank 3.
 
-- **Fly.io** primary for multi-region workers. Scrapers in EU, NA, APAC to avoid geo-fenced bot detection and reduce cross-region latency.
-- **GCP** (existing account) for heavy batch / training of Splink models / ClickHouse analytics (if needed).
-- **Cloudflare** for DNS, R2, WAF, Turnstile.
+### 8.3 World-model-conditioned ranking (Phase 2+)
 
-### 11.2 Proxy / data-plane
+Candidate nodes are scored by the World Model; retrieval ranking fuses semantic relevance + structural relevance + **role-conditioned prior** ("does this node's world-model role match the query intent?"). Biggest single recall lift on adversary-hiding queries.
 
-- **BrightData residential** (premium-target scraping; metered per-tenant)
-- **Oxylabs datacenter** (bulk)
-- **Owned Hetzner DC rotating pool** (~€3/IP/mo, low-risk work)
-- **Tor** (passive-only, read-only queries)
-- **Key rotation pool**: 3–5 accounts per paid data source, rotated per-tenant
+### 8.4 Benchmark contract
 
-### 11.3 Data-plane caching
-
-Every external API response is cached to R2 (by normalized-query hash) with a source-specific TTL. Cache hits incur no third-party API cost. Cross-tenant cache sharing applies **only to deterministic public-data sources** (WHOIS, DNS, cert transparency, public ASN data, Wayback, Common Crawl) where the result is a property of the queried identifier rather than a function of the user. Commercial-dataset responses (HIBP, Shodan, DeHashed, etc.) and any user-specific reasoning outputs are never cross-tenant-cached. Default-on for eligible sources with clear disclosure in the privacy policy; opt-out available per-tenant.
-
-### 11.4 Observability
-
-- **OpenTelemetry** traces/logs/metrics → Grafana Cloud
-- **Sentry** errors
-- **ClickHouse** (optional Phase 1.5) for tool-usage analytics / billing meters / product insights
-
-### 11.5 Security
-
-- mTLS between services
-- All inter-service calls signed (Ed25519)
-- Postgres RLS for tenant isolation
-- FalkorDB multi-tenancy via graph-per-tenant; tenant ID in every query
-- R2 artifact paths include tenant ID + SHA-256; accessed via short-lived signed URLs
-- Secrets via Infisical or Google Secret Manager
-- SOC 2 Type I target: 12 months. Type II: 24 months.
-
-### 11.6 Cost model (rough v1 unit economics)
-
-| Item | Per-month at 1K users | Per-month at 10K users |
-|---|---|---|
-| Fly.io compute | $800 | $5,000 |
-| Postgres managed | $400 | $2,500 |
-| FalkorDB | $300 | $1,500 |
-| DragonflyDB | $200 | $800 |
-| R2 storage + egress | $150 | $900 |
-| Proxy pool | $2,000 | $12,000 |
-| Third-party API licenses | $3,000 | $18,000 |
-| LLM (Claude Advisor) | $1,500 | $12,000 |
-| **Total infra** | **~$8,350** | **~$52,700** |
-| **Revenue (avg $80/user)** | **$80,000** | **$800,000** |
-| **Gross margin target** | **~90%** | **~93%** |
-
-Cache-hit rate compounding drives margin — at steady-state 60–80% hit rate on the expensive APIs, per-investigation variable cost trends toward zero.
+- ≥ 90% multi-hop recall at ~50% of HippoRAG 2 context tokens with ~40% fewer hallucinations (versus rev. 2 numeric targets)
+- Novelty score ≥ 4× best commercial alternative on published benchmark — **Phase 2 target, not launch target**
 
 ---
 
-## 12. Non-Functional Requirements
+## 9. The Connection-Finding Engine (12 primitives)
+
+10 primitives from rev. 2 (revised for hypergraph + distributional output) + 2 new in rev. 3:
+
+1. `generate_hypotheses(seed_a, seed_b)`
+2. `bounded_pathfind(seed_a, seed_b, max_hops=4, edge_filters, min_confidence=0.6)`
+3. `probabilistic_path_score(path)` — Bayesian-smoothed, propagates distributional confidences
+4. `community_co_membership(seed_a, seed_b, threshold=0.7)`
+5. `temporal_coincidence(entities[], location_radius_m, time_window)`
+6. `embedding_proximity_without_edges(seed, k=20)` — sock-puppet / alias detection
+7. `structural_role_mining(entity)` — GraphSAGE structural embeddings, surfaces nexus entities
+8. `contradiction_detect(entity)` — bitemporal reasoning over overlapping-valid-time edges
+9. `predict_missing_link(entity, relation_type, top_k=10)` — Phase 1 via RotatE KGE; Phase 2 thin wrapper over Predictive Temporal's background scan
+10. `cross_source_corroboration(claim, min_sources=3)` — Bayesian evidence triangulation with source-tier weighting (including C2PA / Amber Authenticate when present)
+11. **`match_adversary_playbook(entity_or_subgraph)`** — ranks playbook matches with match-confidence distributions + distinguishing features + reference cases. *The most marketable single primitive.*
+12. **`counterfactual_query(hypothesis)`** — distribution of graph states consistent with a hypothesis; returns discrepancy + consistency scores with evidence pointers. Phase 2 v1 (may be limited); Phase 3 v2.
+
+### 9.1 Investigation templates
+
+**"Find hidden attack surface"** (bounty-hunter-specific, entirely new workflow):
+1. `match_adversary_playbook` on the target domain → does this look like a shadow-IT pattern?
+2. `predict_missing_link(domain, *)` → what infrastructure should exist?
+3. `structural_role_mining` on known assets → nexus hosts / forgotten infra
+4. `embedding_proximity_without_edges` on sample employee → likely sock-puppet / forgotten accounts
+5. `counterfactual_query` on top hypothesis → does it hold?
+6. Synthesis: prioritized attack-surface report with citations
+
+**"Are these the same actor?"** / **"What else should we look at?"** — same as rev. 3 templates, unchanged.
+
+---
+
+## 10. Agent Orchestration
+
+**LangGraph** state machine: `Plan → Collect → Resolve → Traverse → Hypothesize → Verify → Synthesize → Report`. Every state replayable from event log.
+
+**DSPy modules per node** — compiled prompts against eval traces, 99%+ reliability, cross-model portability.
+
+**LLM Gateway** (§4-equivalent in rev. 3 §8.3): all LLM calls abstracted behind provider-agnostic gateway. Backends: Anthropic direct (primary, Claude Advisor Tool with Opus 4.7 advisor + Haiku 4.5 executor), OpenRouter (multi-model, cost-sensitive, continuous benchmark), BYOK (Operator tier). Per-call-site: preferred model, fallback chain, cost ceiling, benchmark-channel tagging.
+
+**Claude Advisor + Policy Network dual voice** (Phase 3): at Plan/Pivot checkpoints, both voices produce ranked next-action suggestions. Agreement proceeds automatically; disagreement surfaces to user with one-click "take Advisor" / "take Policy" / "show me why."
+
+**BAML** for all typed LLM I/O. **Audit trail + trajectory logging** — every state transition logged for replay and (Phase 3) Policy Network training.
+
+---
+
+## 11. The Compounding Benchmark
+
+### 11.1 Composition
+
+- **Internal benchmark (Phase 1):** 50 cases. Weekly run. MuSiQue + 2WikiMultiHop + TGB/TGB-Seq + curated real-world recon scenarios.
+- **External-advisor-reviewed (Phase 2 months 6-10):** 200 cases. Monthly run. Three invited advisors (2 bounty hunters, 1 investigative journalist) validate methodology.
+- **Public benchmark (Phase 2 month 10+):** 500 cases. Quarterly public report. Case definitions published; solutions not.
+
+### 11.2 Metrics
+
+- **Primary:** Novelty score — non-obvious, later-verified connections surfaced per case that baselines miss. "Non-obvious" defined as: not reachable via Tier 1 passive lookup on the seed entity.
+- **Secondary:** multi-hop recall (MuSiQue-style), time-to-first-insight, cost per case, hallucination rate (fraction of claims with invalid provenance).
+
+### 11.3 Baselines
+
+- Maltego CE + standard transforms
+- SpiderFoot OSS
+- Shodan + Censys combined
+- Stock Claude Opus 4.7 with generic MCP-OSINT tools (no world model, no adversary library)
+
+The last baseline is the critical test of whether our architecture produces measurable advantage over a vanilla LLM + tools setup.
+
+### 11.4 Publication philosophy
+
+Internal-only for first 6 months of Phase 2 while methodology stabilizes under advisor review. Public launch only when the methodology can survive adversarial scrutiny. Quarterly thereafter — regression blocks release; engineering is partially compensated on benchmark deltas over rolling 6-month windows.
+
+---
+
+## 12. Tool Catalog
+
+**Total at GA:** ~50 tools. Organized for bounty-hunter-first workflows.
+
+### Phase 0 — 15 tools (months 0-3)
+
+Stealth HTTP + domain recon + host intel — the bounty-hunter core.
+
+1. `stealth_http_fetch` (rnet / JA4+ impersonation)
+2. `subfinder_passive` (PD Go lib)
+3. `dns_lookup_comprehensive` (dnsx)
+4. `whois_query` (free tier + WhoisXML API)
+5. `cert_transparency_query` (crt.sh)
+6. `asn_lookup` (Team Cymru + BGPView)
+7. `reverse_dns` (historical)
+8. `http_probe` (httpx — tech fingerprint, screenshot, favicon hash)
+9. `shodan_search`
+10. `censys_search`
+11. `port_scan_passive` (naabu)
+12. `tech_stack_fingerprint` (webanalyze + Wappalyzer JSON)
+13. `exposed_asset_find` (S3/GCS/Azure bucket + misconfig checks)
+14. `leaked_secret_git_scan` (trufflehog + gitleaks against GitHub orgs)
+15. `takeover_check` (common subdomain-takeover TLS/DNS signatures)
+
+### Phase 1 — +20 tools (months 3-7) bringing total to 35
+
+Identity, social, content/archives, images, corporate, meta.
+
+- `username_search` (Go port of sherlock)
+- `email_holehe` · `email_breach_lookup` (HIBP + DeHashed)
+- `phone_numverify` · `google_account_ghunt`
+- `instagram_public_profile` · `twitter_snscrape` · `linkedin_public_profile` · `reddit_api_query` · `github_user_profile`
+- `intelx_search` · `dehashed_search`
+- `opencorporates_search` · `opensanctions_screen` (via Nomenklatura) · `sec_edgar_filing_search`
+- `wayback_history` · `common_crawl_lookup` · `pdf_document_analyze`
+- `reverse_image_search` (Yandex + TinEye + Bing Visual)
+- `exif_extract_geolocate`
+- `evidence_bundle_export`
+
+### Phase 2 — +10 tools (months 7-13) bringing total to ~45
+
+Higher-value + intelligence-heavy.
+
+- `gdelt_gkg_query` · `gdelt_visual_gkg_query`
+- `deepfake_detect_media` (Reality Defender + Hive AI)
+- `deepgram_transcribe_diarize` · `deepgram_voice_clone_detect`
+- `arkham_entity_lookup` · `breadcrumbs_bridge_trace`
+- `silentpush_passive_dns`
+- `hunchly_sync` · `maltego_transform_bridge`
+
+### Phase 3 — remaining (months 13+)
+
+Face search (consent-gated multi-backend) · Etherscan / Solscan detailed traces · DarkOwl partnership · extended corporate adapters · watched-entity alerting.
+
+### Tool-catalog open-source policy
+
+**Apache-2.0:** all tool adapters in Phase 0 and most of Phase 1 (~30 tools). The MCP server shell, the typed tool protocol, the stealth HTTP layer, the evidence bundle exporter. These form the distribution surface.
+
+**Proprietary (hosted only):** tools that depend on the World Model, Adversary Library, or Policy Network to produce value. The `match_adversary_playbook` tool, the `world_model_query` tool, `counterfactual_query`, `predict_missing_link` (as the continuously-trained variant), and anything that calls into federated aggregates. These stay closed because the training data and ongoing federation are the moat.
+
+---
+
+## 13. Infrastructure & Deployment
+
+### 13.0 Scraping hierarchy (four-tier stealth ladder)
+
+| Tier | Tech | Cost / request | Hits |
+|---|---|---|---|
+| 1 | Direct HTTP | ~$0 | Unprotected APIs |
+| 2 | Stealth HTTP (rnet + JA4+) | ~$0 + proxy | ~30-40% of protected sites, no browser |
+| 3 | Playwright + Nodriver | ~$0.002 | JS-heavy |
+| 4 | Camoufox | ~$0.005 + premium proxy | DataDome / Turnstile / Akamai last-resort |
+
+### 13.1 Runtime
+
+- **Fly.io** primary — multi-region workers, single-tenant-per-VM initially
+- **GCP** (existing account) — heavy batch (World Model training in Phase 2+, Splink model retrains)
+- **Cloudflare** — DNS, R2, WAF, Turnstile
+
+### 13.2 Proxy / data-plane
+
+- BrightData residential (premium targets, metered)
+- Oxylabs datacenter (bulk)
+- Owned Hetzner DC rotating pool (€3/IP/mo, low-risk bulk)
+- Tor (passive-only)
+- Per-tenant API-key pool rotation (3-5 accounts per paid data source)
+
+### 13.3 Data-plane caching
+
+Every external API response cached to R2 by normalized-query hash with source-specific TTL. Cross-tenant cache sharing only on deterministic public-data sources (WHOIS, DNS, cert transparency, Wayback, Common Crawl). Commercial-dataset responses never cross-tenant-cached.
+
+### 13.4 Observability
+
+OpenTelemetry → Grafana Cloud · Sentry · ClickHouse (Phase 2+ optional for billing/analytics).
+
+### 13.5 Security
+
+- mTLS inter-service · Ed25519-signed internal calls
+- Postgres RLS + tenant ID in every query
+- FalkorDB graph-per-tenant in Phase 0-1; pooled multi-tenant in Phase 2
+- R2 artifact paths: tenant + SHA-256; short-lived signed URLs
+- Secrets via Infisical (self-hosted on Fly) or Google Secret Manager
+- Bug bounty program launches Phase 2 (pays bounty hunters in credits — perfect buyer feedback loop)
+
+### 13.6 Cost model (revised for solo + single-tenant-per-VM early)
+
+| Item | 100 paid users | 1,000 paid users | 5,000 paid users |
+|---|---|---|---|
+| Fly.io compute (single-tenant-per-VM early; pooled at 1K+) | $400 | $4,000 | $12,000 |
+| Postgres (Fly.io Postgres or Supabase) | $100 | $400 | $1,500 |
+| FalkorDB (self-hosted on Fly) | $100 | $500 | $2,000 |
+| DragonflyDB | $50 | $200 | $800 |
+| R2 storage + egress | $40 | $250 | $1,200 |
+| Proxy pool | $400 | $2,500 | $10,000 |
+| Third-party API licenses | $600 | $3,500 | $15,000 |
+| LLM (Claude Advisor via Gateway) | $400 | $3,000 | $12,000 |
+| GPU training (Phase 2+) | $0 | $800 | $4,000 |
+| GPU inference (Phase 2+) | $0 | $400 | $2,500 |
+| **Total infra** | **~$2,090** | **~$15,550** | **~$61,000** |
+| **Revenue @ avg $85/user** | **$8,500** | **$85,000** | **$425,000** |
+| **Gross margin** | ~75% | ~82% | ~86% |
+
+At 100 paid users (month 4-5), you're ramen-profitable solo. At 1K (month 10-14), this is a real business. At 5K (year 2+), it's fundable or bootstrapped-profitable.
+
+---
+
+## 14. Non-Functional Requirements
 
 | Category | Target |
 |---|---|
-| MCP tool call p95 latency (cached) | < 200ms |
-| MCP tool call p95 latency (uncached) | < 4s |
-| Multi-hop connection-find p95 | < 8s (up to 4 hops, per-tenant graph ≤ 10M nodes) |
-| Investigation end-to-end (medium complexity) | 5–15 minutes |
-| Uptime | 99.9% |
-| Tenant isolation | Cryptographic (RLS + graph namespacing + signed artifact URLs) |
-| Data retention | Tier-dependent (30/180/365 days); user-triggered deletion within 24h |
+| MCP tool call p95 (cached) | < 200ms |
+| MCP tool call p95 (uncached) | < 4s |
+| Multi-hop connection-find p95 | < 8s (up to 4 hops, tenant graph ≤ 10M nodes) |
+| Investigation end-to-end (medium) | 5-15 min |
+| Uptime | 99.5% Phase 0; 99.9% Phase 2+ |
+| World Model scoring p95 (sync) | < 50ms (Phase 2+) |
+| World Model scoring p95 (async) | < 500ms (Phase 2+) |
+| Predictive Temporal background scan | hourly per tenant, < 10 min (Phase 2+) |
+| Federated aggregation cadence | daily (Phase 2+) |
+| DP ε per release | published; ≤ 1.0 structural, ≤ 2.0 meta-features (revised down from rev. 3's 4.0 pending expert review) |
+| Benchmark cadence (public) | quarterly (Phase 2+) |
+| Benchmark cadence (internal) | weekly (Phase 0+) |
 | DSAR response | < 30 days (GDPR) |
-| Evidence chain immutability | R2 object-lock + Merkle-tree rollups |
+| Evidence chain immutability | R2 object-lock + Merkle rollups |
 
 ---
 
-## 13. Phasing & Milestones
+## 15. Distribution Strategy (Solo-Founder PLG Stack)
 
-### Phase 1 — MVP (target: 4 months, private beta)
-- MCP server (stdio + Streamable HTTP) with 25 of the 36 v1 tools (incl. stealth HTTP layer, corporate records, sanctions)
-- **Three-tier ER** (GLiNER + Jellyfish-8B self-hosted + Claude Haiku 4.5)
-- **FalkorDB + Graphiti** graph layer with bitemporal writes
-- **6 of 10 connection primitives:** `bounded_pathfind`, `probabilistic_path_score`, `generate_hypotheses`, `temporal_coincidence`, `community_co_membership`, `cross_source_corroboration`
-- **Composite retrieval:** HippoRAG 2 baseline + OG-RAG schema gating
-- LangGraph + BAML orchestration (DSPy compilation in Phase 2)
-- **LLM Gateway** (Anthropic direct + OpenRouter backend) with cost-ceiling + fallback chain
-- **Learning infrastructure (instrumentation only):** Claim versioning, contradiction-revision event stream, hypothesis-outcome labeling, retrieval-strategy tagging. Loops log data but don't yet feed the prod system.
-- **Evaluation harness** — MuSiQue + 2WikiMultiHop + TGB/TGB-Seq + 50 curated OSINT cases. Gates every component-layer PR.
-- Postgres + auth + billing (Stripe) + credit metering
-- **Launch invite-only beta (target: 100 users)**
+Each channel below is executable by a solo technical founder with **zero sales skill, zero outbound, zero contacts**. Precedent in the right-hand column proves the pattern works.
 
-### Phase 1.5 — Public Beta (months 4-6)
-- Remaining 11 v1 tools (full 36-tool catalog)
-- **4 connection primitives added:** `embedding_proximity_without_edges`, `structural_role_mining`, `contradiction_detect`, `predict_missing_link` (RotatE-based)
-- **PathRAG** context pruning integrated into retrieval
-- **DSPy** module compilation for core prompts
-- **Learning loops activated (Bucket A only):** ER feedback, retrieval-strategy compilation, model-benchmark auto-routing. Privacy-review-complete and DPIA-approved.
-- **Public Tier-3 reference graph** ingestion pipeline live (OpenCorporates, OpenSanctions, GDELT, cert transparency, etc. continuously ingested once for all customers).
-- **GDELT + Reality Defender + Hive** tools (Phase 1.5 additions)
-- Web analyst UI (SvelteKit — Phase 2 preview behind feature flag)
-- SOC 2 Type I audit commences
+| Channel | Execution | Proven-by-example |
+|---|---|---|
+| **Open-source core** (Apache-2.0: MCP server + 30 tools + orchestration glue) | GitHub-first. Docs as marketing. Weekly release cadence. | Supabase, Sentry, PostHog, Plausible, Cal.com |
+| **MCP Registry listings** (Anthropic official, Smithery, MCP.so) | Submit once per registry. Passive distribution on a channel that's < 18 months old. | First-mover advantage window |
+| **Hacker News launch posts** (architecture deep-dives) | Write-once, submit, technical depth sells itself. Target one "Show HN" every 2-3 months. | Fly.io launch, Val.town, Resend |
+| **Twitter/X "building in public"** | Weekly thread: investigation screenshot + what the tool found. No personality required. | Pieter Levels, Cal.com, DHH |
+| **YouTube case-study demos** | 10-min screen-record + narration. No face. Each video = compounding SEO asset. | NahamSec, InsiderPhD, STÖK |
+| **Case-study blog (SEO compound)** | Weekly: "I used [tool] to find [hidden thing] in N minutes." Ranks on Google for "how to find X." | Bellingcat training blog, Huntress, GreyNoise |
+| **Conference CFPs (free)** | BSides (multi-city), DEFCON Recon Village, NahamCon, SANS OSINT Summit. Prep once, deliver many times. | Every bounty-hunter tool that matters |
+| **Discord community participation** | Bugcrowd, HackerOne, OSINT Curious, InfoSec Prep. Answer questions; don't spam. | Caido, every indie security tool |
+| **Podcast appearances** | Darknet Diaries, Risky Business, DayZero, Privacy-Security-OSINT Show. Pitch once, accepted repeatedly. | Free media for technical founders |
+| **In-workflow integrations** | Burp Suite plugin, Caido plugin, Discord webhooks, Obsidian/Notion export. Distribution embedded in product. | Tailscale, 1Password, Vanta |
+| **Bounty program that pays in credits** (Phase 2) | Bug bounty hunters find bugs; we pay in product credits. Every bounty = product feedback + evangelism. | Dual-purpose: security + marketing |
+| **Journalist free-tier program** | Verified-journalist free Hunter accounts in exchange for attribution. One ProPublica byline = 10K signups. | Muckrock, DocumentCloud growth patterns |
 
-### Phase 2 — GA (months 6-10)
-- **Multi-region workers** deployed (Fly.io EU + APAC)
-- **BYOK flow** (Advanced + Team tiers)
-- Crypto tracing, audio OSINT, face search, dark web (DarkOwl partnership), Silent Push
-- Team accounts + RBAC
-- **Evidence bundle export** (court-grade Merkle-rolled PDF + manifest)
-- **TGN temporal link prediction** upgrade to `structural_role_mining` and `predict_missing_link`
-- **Learning loops — Bucket B activated** (hypothesis priors, community archetypes, role-mining patterns). Tenant-level opt-out live.
-- **Self-healing memory live** — contradiction-driven revision, confidence decay, retrospective re-extraction.
-- **Customer compounding dashboard** — each tenant sees their cost-per-investigation, mean-time-to-insight, and lead-generation precision trend QoQ.
-- Hunchly integration, Maltego bridge export
-- SOC 2 Type I achieved
-- **Public launch**
+**Explicitly NOT in the stack (for sanity):**
+- Outbound sales (email, LinkedIn, cold call) — ever
+- Paid advertising (Google, LinkedIn, Reddit ads) — until MRR > $50K
+- Conferences as exhibitor (vs speaker) — requires booth staffing
+- Partnership negotiations with data providers — use public/self-serve APIs
+- Influencer marketing — requires negotiation
+- Enterprise sales — requires sales team
 
-### Phase 3 — Scale (months 10-18)
-- Graph foundation model evaluation (GraphGPT / OpenGraph) for next-gen link prediction
-- Real-time monitoring / alerting (watched-entity change detection)
-- Advanced corporate adapters (Companies House, Dun & Bradstreet premium)
-- Satellite imagery (Sentinel Hub, Planet Labs)
-- Voice biometric matching at scale
-- Marketplace for user-contributed tool adapters
-- SOC 2 Type II, ISO 27001 optional
-- White-label / reseller tier evaluation
+**Success criteria per channel:**
+- Months 0-3: 100 GitHub stars, 500 MCP server installs, 1 Hacker News front-page post, 1 ProPublica/Bellingcat mention, 100 Free users, 10 paying.
+- Months 3-7: 1K GitHub stars, 5K installs, 2 HN front-page, 3 conference talks accepted, 500 Free, 50 paying.
+- Months 7-13: 5K stars, ramen-profitable, first VC inbound (reject or raise on terms), 200+ paying, compounding-benchmark story viral.
 
 ---
 
-## 14. Risks & Mitigations
+## 16. Open-Source Strategy
+
+### 16.1 What's Apache-2.0 (public code)
+
+- **MCP server shell** — stdio + Streamable HTTP transport, auth passthrough, tool dispatch, credit-metering stubs
+- **Tool adapters (~30)** — all Phase 0 + most of Phase 1 tools
+- **Stealth HTTP layer** (rnet wrapper with JA4+ impersonation presets)
+- **Typed tool protocol + SDKs** (TS, Go, Python)
+- **Agent orchestration glue** (LangGraph recipes, BAML templates, DSPy module examples)
+- **CLI shell + plugin harness**
+- **Evidence bundle exporter** (format + verifier, even if signing service is hosted)
+- **Example adversary playbooks** (~5 simple ones to illustrate format — the library proper stays closed)
+- **Benchmark harness code** (not the case data — the harness runner)
+
+### 16.2 What's proprietary (hosted-only)
+
+- **World Model** — training code, model weights, inference service
+- **Adversary Library** — full 20+ playbooks in v0, 60+ in v1, 150+ in v2
+- **Federated Learning aggregator** — secure aggregation, DP budget tracking, cross-tenant priors
+- **Predictive Temporal Layer** — TGN training + background scanner
+- **Investigator Policy Network** — training + serving (Phase 3)
+- **Pattern Library (Tier 2 knowledge store)** — aggregated cross-tenant patterns
+- **Hosted data plane** — proxy pool, API-key rotation pool, cache
+- **The benchmark case dataset itself** — harness is open; cases are not
+
+### 16.3 Why this split works
+
+The OSS pieces are **the distribution channel**. The closed pieces are **the moat**. Every happy OSS user is a potential paying user who wants the moat features (adversary matching, world-model-conditioned retrieval, federated priors, predictive temporal) that cannot be reproduced without aggregate cross-tenant data.
+
+**Forks are not a threat** because:
+1. A fork cannot federate across users without access to the aggregated patterns.
+2. A fork cannot call the World Model without running the training pipeline on aggregate data it doesn't have.
+3. A fork without those is strictly less useful than the hosted version, and users know it.
+
+### 16.4 Contributor strategy
+
+- Clear `CONTRIBUTING.md` with well-labeled "good first issue" pipeline
+- Monthly community call (30 min, recorded, YouTube)
+- Contributors get Hunter-tier credits as thank-you
+- Most-valuable contributors get Operator-tier credits
+- Adversary Library PR pathway: accept playbook contributions through a review process; contributor gets credit + co-author attribution in the case-study blog
+
+---
+
+## 17. Phasing & Milestones (solo-founder-sized)
+
+Four phases. Weekly/bi-weekly public build log from day one.
+
+### Phase 0 — Credible MVP (months 0-3)
+
+**Goal:** Ship a usable, paid OSS product. Hacker News launch. First 10 paying customers.
+
+- Foundation: monorepo, Fly.io + Cloudflare + Postgres + R2, Stripe Free + Hunter tiers, OpenTelemetry
+- LLM Gateway (Anthropic + OpenRouter backends, cost-ceiling, fallback chain)
+- MCP server (stdio + Streamable HTTP) — open-sourced Day 1
+- **15 Phase 0 tools** (stealth HTTP + domain/infra + host intel + git secret scan + takeover check)
+- FalkorDB + Graphiti + **hypergraph data model + distributional edges** (foundational, done right the first time)
+- Three-tier ER (GLiNER + Jellyfish-8B + Claude Haiku) — basic
+- Trajectory / event stream logging (inert — feeds future learning loops)
+- CLI binary
+- Minimal docs site (Starlight or similar)
+- **Launch beats: Show HN · first YouTube demo · first case-study blog post · Twitter build log active**
+- Target exit: 100 Free users, 10 paying ($500 MRR)
+
+### Phase 1 — Compounding foundation ships + Operator tier (months 3-7)
+
+**Goal:** Full v1 tool catalog, 6 connection primitives, Adversary Library v0, ship Operator tier, grow to 50 paying.
+
+- +20 tools → **35 total**
+- **6 of 12 connection primitives** live: `bounded_pathfind`, `probabilistic_path_score`, `generate_hypotheses`, `temporal_coincidence`, `community_co_membership`, `cross_source_corroboration`
+- **Adversary Library v0** — 20 playbooks curated by Jason, subgraph matching engine live
+- **`match_adversary_playbook` primitive** ships (priced into Operator tier)
+- Composite retrieval (HippoRAG 2 + OG-RAG — PathRAG deferred to Phase 2)
+- LangGraph + BAML orchestration with Claude Advisor Tool
+- Operator tier launches ($199/mo)
+- Web UI (SvelteKit, minimal — case browser, graph view, report export)
+- REST API live
+- **Internal benchmark v1** (50 cases, weekly run)
+- **Launch beats:** 2nd HN post ("Ship: Adversary-aware OSINT for bounty hunters"), first conference talk, Burp Suite plugin ships, first journalist attribution
+- Target exit: 500 Free users, 50 paying ($3-5K MRR), 1K GitHub stars
+
+### Phase 2 — Compounding layer activates (months 7-13)
+
+**Goal:** The moat goes live. World Model v1 + Federated Learning Buckets A+B + Predictive Temporal. Remaining primitives. Ramen-profitable.
+
+- **Remaining 6 primitives** ship: `embedding_proximity_without_edges`, `structural_role_mining`, `contradiction_detect`, `predict_missing_link` (KGE v1), `match_adversary_playbook` (if not in Phase 1), `counterfactual_query` v1
+- **World Model v0.5 → v1.0** — structural GraphSAGE layer activates, then behavioral sequence model on opt-in trajectories
+- **Federated Learning Buckets A + B** active with published DP ε budgets; independent crypto audit complete
+- **Adversary Library v1.0** — 60+ playbooks (community + federated discovery + curation)
+- **Predictive Temporal v1.0** — TGN background scan, arrival-time predictions, lead surfacing
+- **PathRAG pruning** integrated
+- **DSPy compilation** active on core prompts
+- **10 Phase 2 tools** added (GDELT, Deepfake detection, audio OSINT, Arkham/Breadcrumbs, Silent Push) → **~45 total**
+- Multi-tenant pooling (exit single-tenant-per-VM)
+- Public benchmark launch (500 cases, quarterly reports begin)
+- **Launch beats:** "We got 18% smarter this quarter with zero code changes" viral blog post, DEFCON Recon Village talk, first journalist investigation using the tool becomes a major story
+- Target exit: 2K Free users, 200 paying ($15-20K MRR, ramen-profitable solo), 5K GitHub stars
+
+### Phase 3 — Policy Network + dominance (months 13-24)
+
+**Goal:** Investigator Policy Network ships. Tool exceeds expert-investigator baseline on the public benchmark. Decision point: raise / stay indie / sell.
+
+- **Investigator Policy Network v1.0** — imitation learning on ~10K opt-in resolved trajectories
+- **Policy Network v2.0** (later in phase) — offline RL (Conservative Q-Learning) on verdict rewards
+- **Adversary Library v2.0** — 150+ playbooks, continuous discovery mature
+- **World Model v2.0** — vertical-specific sub-models (bounty-hunter specialization, journalist specialization, crypto-investigation specialization)
+- TypeDB evaluation + migration for Compliance-tier workloads if justified
+- Real-time watched-entity alerting with predictive arrival times
+- Team tier + SSO *if ≥ 50 paying users demand it*
+- Compliance tier *if inbound demand arrives*
+- Bug bounty program launches
+- **Launch beats:** "Our policy network beats top investigators on the benchmark" public report, potential fundraising round or deliberate bootstrap continuation
+- Target exit: $50K+ MRR, approaching $1M ARR, optionally fundable at $50M+ pre-money
+
+---
+
+## 18. Risks & Mitigations
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Legal action from scraped platforms | Medium | High | Conservative scraping posture; platform-compliant adapters where available; explicit AUP; legal counsel on retainer |
-| Breach / data leak of customer cases | Low | Catastrophic | Tenant isolation, RLS, encryption at rest/in flight, SOC 2, bug bounty |
-| LLM cost inflation | Medium | Medium | Advisor Tool pattern caps cost; prompt caching; Haiku-first routing; per-tier credit caps |
-| Third-party API price shocks | Medium | Medium | Multi-source redundancy per data type; cache amortization; contracts with annual rate locks |
-| Competitors ship AI-native first | Medium | High | Bitemporal + connection primitives + **self-evolving learning loops** + pricing are the moat, not tool count; ship the learning infrastructure (even dormant) early as the differentiator |
-| Abuse (stalking, doxing) | Medium | Catastrophic (reputational) | AUP + anomaly detection on usage patterns + human review on red-flag queries (e.g., repeated single-individual targeting) + account suspension |
-| FalkorDB/Graphiti project health | Low | High | Graph layer behind a thin abstraction; Neo4j fallback implementation kept in CI |
-| **Cross-tenant learning privacy breach** | Low | Catastrophic | Three-bucket model (§9.3) with strict Bucket A aggregation (differential privacy ε ≤ 1.0), Bucket B explicit opt-out, Bucket C opt-in only. Privacy review + DPIA before each loop activates. Independent auditor review pre-Phase 2. Tenant-triggered purge works across all tiers. |
-| **Self-healing memory data loss** | Low | High | All revisions additive in bitemporal model — prior Claims superseded, never deleted. Decay-auto-prune goes to review-queue, not hard-delete. Undo window (90 days) on all auto-revisions. Full audit trail on every graph-modifying event. |
-| **OpenRouter / LLM vendor dependency** | Medium | Medium | LLM Gateway abstraction means we always have at least two production backends; no call-site hardcodes a provider. Benchmark suite auto-evaluates alternatives continuously. |
-| **Slow learning-loop signal (early-stage data volume)** | High (Phase 1) | Low | Synthetic case generator produces investigation scenarios to bootstrap learning loops before customer volume reaches critical mass. Loops stay dormant (logging only) until activation thresholds met. |
+| **Solo-founder burnout / single-point-of-failure** | High | Catastrophic | Ruthless scope discipline (this spec). Automated testing from Day 1. Hire first contractor (not FTE) at $10K MRR; first engineer at $30K MRR. |
+| **OSS channel doesn't produce distribution** | Medium | High | Triple-diversified GTM (OSS + content + community). Weekly output. If still zero signal at month 4, reassess buyer assumption. |
+| **Bug bounty hunters don't adopt despite feature-fit** | Low | High | Pre-build validation: post architecture concept on r/bugbounty + Twitter in month 1; observe pull. If zero resonance, pivot buyer before building more. |
+| **Legal action from scraped platforms** | Medium | High | Conservative scraping posture, stealth HTTP tier never bypasses auth, AUP enforced, legal counsel on retainer (~$500/mo) |
+| **Breach / case data leak** | Low | Catastrophic | Tenant isolation, RLS, encryption, bug bounty program Phase 2 |
+| **Federated learning privacy breach** | Low-Medium | Catastrophic | Published ε budgets, secure aggregation, independent crypto audit before Channel B/C activation, k≥20 anonymity, red-team attack simulation |
+| **LLM cost shock** | Medium | Medium | LLM Gateway cost ceilings + OpenRouter fallback + aggressive prompt caching + Haiku-first routing |
+| **Third-party API price shocks** | Medium | Medium | Multi-source redundancy, cache amortization, open-source alternatives for each paid source where possible |
+| **Competitors copy OSS and hosted features** | Medium | Low | OSS forks cannot federate; moat is in aggregate data, not code. Shrug and ship faster. |
+| **FalkorDB / Graphiti project health** | Low | High | Graph layer behind abstraction; Neo4j + TypeDB fallback implementations in CI |
+| **Abuse (stalking, doxing)** | Medium | Catastrophic (reputational) | AUP + programmatic anomaly detection + red-flag query review + account suspension |
+| **Policy Network data volume insufficient by Phase 3** | Medium | Medium | Tiered opt-in incentives (credit rebates, pending GDPR legal review), seed with internal investigations Jason runs, synthetic-case augmentation |
+| **Hypergraph emulation performance degrades** | Medium | Medium | Measurement-contingent migration plan (§4.6); TypeDB evaluation Phase 2 |
+| **Solo founder isn't actually good at technical execution this ambitious** | ??? | Catastrophic | Ship Phase 0 in 3 months as self-validation. If Phase 0 slips > 50%, scope is wrong — cut, don't push. |
 
 ---
 
-## 15. Out of Scope (v1)
+## 19. Out of Scope (v1)
+
+Permanently or until inbound demand forces a revisit:
 
 - Law enforcement / government customers (separate compliance program required)
-- On-prem / air-gapped deployment
-- Mobile apps
-- Non-English entity extraction beyond top-10 languages (GLiNER covers the top 10 natively)
-- Voice / audio OSINT (speaker ID, voiceprint)
-- Video content analysis beyond exif + reverse-image on keyframes
-- Real-time monitoring / alerts (Phase 3)
-- Marketplace for user-contributed tools (Phase 3)
+- On-prem / air-gapped deployment (Compliance tier might re-raise)
+- Mobile apps (web + CLI + MCP covers the workflow)
+- Real-time surveillance / alerting at sub-hourly cadence (Phase 3+)
+- Marketplace for user-contributed tools (Phase 3+)
+- Voice biometric matching (Phase 3+ if demand materializes)
+- Satellite imagery deep analysis (Phase 3+ via Sentinel Hub / Planet Labs partnership if ever)
+- Multi-seat Team accounts + SSO (only if ≥ 50 paying users request)
+- SOC 2 / ISO 27001 certification (only if a Compliance customer funds it)
 
 ---
 
-## 16. Open Questions
+## 20. Open Questions
 
-1. **Branding / name** — `osint-agent` is a placeholder. Candidates to consider: Argus, Meridian, Telltale, Beacon, Nexus, Clue.
-2. **Open-source strategy** — should we open-source the tool-worker layer and/or the MCP server as lead-gen? Recommendation: open-source the tool adapters + MCP glue (Apache 2.0), keep ER pipeline + connection primitives + graph schemas + **self-evolving learning loops + pattern library** closed. The open-source tool catalog becomes marketing; the moat stays proprietary.
-3. **Reseller / white-label tier** — demand likely exists; defer decision to post-GA.
-4. **Bucket B default-on vs opt-in** — legal/DPO review needed. Recommendation: Bucket B default-on with explicit opt-out controls in onboarding + settings, consistent with SaaS analytics norms. Requires clear DPIA documentation and plain-English explanation in the privacy policy.
-5. **Synthetic case generator depth** — how realistic must synthetic cases be to meaningfully bootstrap learning loops before real-user volume arrives? Requires an early prototype to calibrate.
+1. **Branding / name** — `osint-agent` placeholder. Candidates: Meridian, Argus, Telltale, Nexus, Beacon, Clue, Quarry, Tradecraft. Given adversary-aware positioning, *Quarry* and *Tradecraft* lean into the frame. *Meridian* and *Clue* are softer. Recommendation: decide before Phase 0 Show HN.
+2. **Bucket C opt-in rebate structure** — current design (15% credit rebate for opt-in) may fail GDPR "freely given consent" test. Legal review required before Phase 2 activation. Alternative: reframe as community-contribution status (badge, recognition, NOT financial incentive) — slower data accumulation but cleaner legal posture.
+3. **Public benchmark external advisor selection** — who serves? Recommendation: solicit via Twitter in Phase 1 ("looking for 3 volunteer advisors — 2 bounty hunters, 1 investigative journalist — to help validate our upcoming public benchmark methodology").
+4. **First contractor hire timing and skillset** — at $10K MRR (realistic Phase 1 exit), likely a DevOps / SRE contractor (10hrs/week, $2-3K/mo) to handle infra oncall while Jason builds. First FTE at $30K+ MRR, probably an ML engineer to own the World Model / Federated Learning stack in Phase 2.
+5. **Bounty hunter validation experiment** — in month 0-1, post the architecture concept on `/r/bugbounty`, Twitter, and relevant Discords. If resonance is weak, reconsider buyer assumption before committing 3 months to Phase 0.
 
 ---
 
-## 17. Appendices
+## 21. Candor — What Rev. 4 Costs and What It Assumes
 
-### Appendix A — Reference reading (external)
-- HippoRAG 2 multi-hop RAG pattern
-- PathRAG flow-based path pruning
-- OG-RAG ontology-grounded extraction
-- FalkorDB GraphBLAS architecture
-- Graphiti bitemporal KG design
-- Splink Fellegi-Sunter ER
+### Costs (honestly named)
+
+**Technical ambition vs one-person execution.** Rev. 4 still assumes one person builds six integrated systems (MCP + tool platform + graph + ER + retrieval + agent orchestration) in 3 months for Phase 0. Plausible but tight. **If Phase 0 slips > 50% beyond 3 months, the plan is wrong — cut scope, don't push timeline.**
+
+**No sales safety net.** If the bounty-hunter wedge doesn't resonate, there is no sales team to pivot to enterprise buyers to extend runway. Validate the wedge cheaply in month 0-1 before committing.
+
+**Operator-tier pricing exposure.** $199/mo depends on Adversary Library + Predictive Temporal actually being valuable enough to justify the premium. If Phase 1 ships Operator features that Hunter-tier users don't upgrade for, the pricing model is wrong — drop Operator to $99 and re-segment.
+
+**Federated learning legal exposure.** DP budgets, secure aggregation, and the opt-in consent structure all require real legal review. Cannot be self-served. Budget ~$3-5K for legal consultation before Phase 2.
+
+### Assumptions (if any are wrong, plan breaks)
+
+1. **Bug bounty hunters will adopt a PLG OSINT tool at $49-$199/mo.** Validate in month 0-1 via audience posts.
+2. **OSS + content + MCP registries + conference talks produce enough distribution for a solo founder to reach $15-20K MRR within 13 months.** Diversified channels reduce risk but any individual channel may disappoint.
+3. **The compounding architecture (World Model + Adversary Library + Federated Learning) is buildable by one person in Phases 1-2 at the ambition level spec'd.** Contingency: scope down to structural layer only; delay behavioral + Policy Network.
+4. **Anthropic / OpenRouter / Fly.io / FalkorDB / Graphiti all remain operationally healthy through the build window.** Mitigation: abstraction at every provider boundary.
+5. **Jason personally has the domain expertise to curate 20 adversary playbooks at Phase 1 launch.** If not, delay `match_adversary_playbook` to Phase 2 and partner with one or two external curators in exchange for Operator credits.
+
+### The unique advantage Jason brings
+
+You are not a typical solo founder building an OSINT tool. You have deep AI-systems expertise (Head of Engineering at Vurvey, multi-agent / agentic market research production experience), direct hands-on with Claude agentic patterns, cheap GCP compute access, a taste-validated technical stack, and the operator instinct to ship aggressively. **The compounding-inference architecture is precisely the kind of product where the winner is determined by the builder's conviction and shipping velocity, not by headcount.** Rev. 4 is sized for one person to win if — and only if — that person executes aggressively and cuts scope honestly.
+
+---
+
+## 22. Appendix — References and Glossary
+
+### A. Reference reading
+
+- HippoRAG 2 · PathRAG · OG-RAG composite retrieval
+- FalkorDB GraphBLAS architecture + multi-tenant isolation
+- Graphiti bitemporal KG design (Zep)
+- Splink Fellegi-Sunter ER (UK MoJ)
 - Jellyfish-8B / Jellyfish-13B data preprocessing LLM
-- Claude Advisor Tool documentation
-- MCP spec v2.1 (Server Cards)
-- GLiNER-Relex extraction pipeline
-- RotatE / ComplEx knowledge graph embedding for link prediction
-- TGN / TGN-SEAL temporal graph networks
-- ProjectDiscovery tool suite (subfinder, httpx, dnsx, naabu, katana)
+- Claude Advisor Tool (Anthropic 2026)
+- MCP spec v2.1 + Server Cards
+- GLiNER-Relex extraction
+- RotatE / ComplEx / DistMult KGE for link prediction
+- TGN / TGN-SEAL temporal graph networks · TGB / TGB-Seq benchmarks
+- ProjectDiscovery Go library suite (subfinder, httpx, dnsx, naabu, katana)
 - JA4+ TLS fingerprinting (FoxIO)
-- `rnet` / `curl_cffi` / `pyreqwest-impersonate` HTTP impersonation libraries
-- GDELT Global Knowledge Graph 2.0 + Visual GKG
-- OpenSanctions + OpenCorporates + Nomenklatura toolkit
-- LangGraph + DSPy + BAML composition pattern (2026 production stack)
+- rnet / curl_cffi / pyreqwest-impersonate HTTP clients
+- LangGraph + DSPy + BAML composition pattern
+- GraphSAGE inductive embeddings for structural role mining
+- VF3 subgraph matching + neural subgraph matching
+- Flower federated learning + homomorphic secure aggregation
+- Differential Privacy literature (Abadi et al., Dwork-Roth textbook)
+- Content Authenticity Initiative / C2PA / Amber Authenticate
 - Nomenklatura data-integration toolkit (OpenSanctions)
-- TGB / TGB-Seq temporal graph benchmark suite
-- C2PA / Amber Authenticate media-provenance standard (Content Authenticity Initiative)
+- Waymo compounding-data precedent (autonomous driving parallel)
+- Supabase / Sentry / PostHog / Plausible / Cal.com / Fly.io OSS-PLG case studies
 
-### Appendix B — Glossary
-- **Bitemporal**: Modeling both valid-time (when true in the world) and system-time (when recorded).
-- **Bucket A/B/C**: Three tiers of cross-tenant learning contribution (§9.3) — aggregate statistics (default-on), anonymized patterns (default-on, opt-out), named contributions (opt-in only).
-- **DPIA**: Data Protection Impact Assessment — GDPR-required analysis before activating a data-processing activity that may impact privacy.
-- **Entity Resolution (ER)**: Determining that two records refer to the same real-world entity.
-- **Fellegi-Sunter**: Probabilistic record linkage framework (1969) that Splink implements.
-- **HippoRAG**: Neurobiologically-inspired retrieval using personalized PageRank.
-- **JA4+**: Family of TLS/HTTP fingerprints (FoxIO, 2023) that replaced JA3 after Chrome 110 randomized extension order. Universal industry standard for bot detection as of 2026.
-- **KGE**: Knowledge-graph embedding (RotatE, ComplEx, etc.) — vector representation of entities and relations used for link prediction.
-- **Leiden**: Community detection algorithm, improvement over Louvain.
-- **Learning Loop**: A continuously-active feedback cycle (five defined in §9.2) that refines a model, prior, or routing decision from aggregate system operation.
-- **LLM Gateway**: Internal abstraction layer in front of Anthropic, OpenRouter, and BYOK LLM providers. All LLM calls route through it. Enables cost-ceilings, fallback chains, and continuous benchmark-driven model evaluation.
+### B. Glossary
+
+- **Adversary Library**: curated + learned corpus of behavioral playbooks (shell structures, sock-puppet topologies, shadow infrastructure patterns) matched against tenant graphs via subgraph matching.
+- **Bitemporal**: modeling valid-time (true-in-world) + system-time (recorded).
+- **Bucket A / B / C**: three tiers of cross-tenant learning contribution (§4.2).
+- **Compounding Inference Layer**: the architectural stack (§4) that makes the product strictly smarter over time.
+- **DP / ε**: differential privacy / privacy-loss budget.
+- **Federated Learning**: cross-tenant learning with cryptographic isolation; patterns learned globally, case data stays local.
+- **Hypergraph**: graph where edges can connect ≥ 2 nodes (N-ary), emulated on FalkorDB via event nodes.
+- **JA4+**: TLS/HTTP fingerprint family (FoxIO, 2023), universal anti-bot standard 2026.
+- **LLM Gateway**: internal abstraction in front of Anthropic / OpenRouter / BYOK backends.
 - **MCP**: Model Context Protocol — standard interface between LLMs and external tools.
-- **OG-RAG**: Ontology-grounded RAG — schema-constrained extraction to reduce hallucinations.
-- **Pattern Library (Tier 2)**: Global, privacy-preserving store of structural patterns, model weights, and priors — the shared substrate that makes the system smarter for every user as aggregate usage grows (§9.1).
-- **PathRAG**: Flow-based path pruning for graph RAG, reduces context tokens ~44%.
-- **Reciprocal Rank Fusion (RRF)**: Method for combining ranked lists from different retrieval systems.
+- **Novelty Score**: primary benchmark metric — non-obvious, later-verified connections per case that baselines miss.
+- **PLG**: Product-Led Growth — distribution via product quality + viral loops, not sales.
+- **Policy Network**: next-action model trained on resolved-case trajectories (Phase 3).
 - **TGN**: Temporal Graph Network — neural model for dynamic graphs.
-- **Three-tier knowledge architecture**: Case graphs (per-tenant private) + Pattern Library (global anonymized) + Public Reference Graph (global public data). §9.1.
+- **World Model**: learned probabilistic model over population-scale entity / relationship / behavior distributions, queried as priors for Bayesian updates.
