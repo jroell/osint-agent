@@ -1,0 +1,12 @@
+{
+  "name": "@osint/shared-types",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "lint": "bunx tsc --noEmit",
+    "test": "echo 'no tests'",
+    "build": "bunx tsc -p tsconfig.json --emitDeclarationOnly --outDir dist"
+  },
+  "devDependencies": { "typescript": "^5.7.0" }
+}

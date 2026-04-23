@@ -22,6 +22,7 @@
         "@opentelemetry/resources": "2.7.0",
         "@opentelemetry/sdk-node": "0.215.0",
         "@opentelemetry/semantic-conventions": "1.40.0",
+        "@osint/shared-types": "workspace:*",
         "elysia": "^1.1.0",
         "firebase-admin": "13.8.0",
         "pino": "^9.5.0",
@@ -31,6 +32,13 @@
       },
       "devDependencies": {
         "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
+    "packages/shared-types": {
+      "name": "@osint/shared-types",
+      "version": "0.0.1",
+      "devDependencies": {
         "typescript": "^5.7.0",
       },
     },
@@ -239,6 +247,8 @@
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.40.0", "", {}, "sha512-cifvXDhcqMwwTlTK04GBNeIe7yyo28Mfby85QXFe1Yk8nmi36Ab/5UQwptOx84SsoGNRg+EVSjwzfSZMy6pmlw=="],
 
     "@opentelemetry/sql-common": ["@opentelemetry/sql-common@0.41.2", "", { "dependencies": { "@opentelemetry/core": "^2.0.0" }, "peerDependencies": { "@opentelemetry/api": "^1.1.0" } }, "sha512-4mhWm3Z8z+i508zQJ7r6Xi7y4mmoJpdvH0fZPFRkWrdp5fq7hhZ2HhYokEOLkfqSMgPR4Z9EyB3DBkbKGOqZiQ=="],
+
+    "@osint/shared-types": ["@osint/shared-types@workspace:packages/shared-types"],
 
     "@pinojs/redact": ["@pinojs/redact@0.4.0", "", {}, "sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg=="],
 
