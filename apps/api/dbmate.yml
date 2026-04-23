@@ -1,0 +1,3 @@
+migrations_dir: ./src/db/migrations
+schema_file: ./src/db/schema.sql
+wait: true
