@@ -19,12 +19,27 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.x
+      - name: Skip if no TS workspace members
+        id: skip
+        run: |
+          # Skip the TS lane until at least one workspace package exists.
+          # Task 4 lands apps/api/package.json which flips this to true.
+          if ls apps/*/package.json packages/*/package.json >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
       - run: bun install --frozen-lockfile
+        if: steps.skip.outputs.exists == 'true'
         continue-on-error: true  # lockfile may not exist on first run
       - run: bun install
+        if: steps.skip.outputs.exists == 'true'
       - run: bun run lint
+        if: steps.skip.outputs.exists == 'true'
       - run: bun run test
+        if: steps.skip.outputs.exists == 'true'
       - run: bun run build
+        if: steps.skip.outputs.exists == 'true'
 
   go:
     name: Go worker
