@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { config } from "../config";
 
-export const stripe = new Stripe(config.stripe.secretKey, { apiVersion: "2024-11-20.acacia" });
+export const stripe = new Stripe(config.stripe.secretKey, { apiVersion: "2026-03-25.dahlia" });
 
 export async function createCheckoutSession(args: {
   tenantId: string;
