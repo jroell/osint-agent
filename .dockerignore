@@ -1,0 +1,12 @@
+node_modules
+bun.lockb
+.git
+.github
+docs
+**/test
+**/__tests__
+**/__pycache__
+.env
+.env.*
+firebase-admin-*.json
+*.md

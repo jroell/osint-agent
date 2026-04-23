@@ -1,0 +1,20 @@
+{
+  "name": "osint-agent",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "lint": "bun --filter '*' lint",
+    "test": "bun --filter '*' test",
+    "build": "bun --filter '*' build",
+    "dev:api": "bun --filter api dev",
+    "db:up": "docker compose -f infra/docker-compose.yml up -d",
+    "db:down": "docker compose -f infra/docker-compose.yml down",
+    "db:migrate": "cd apps/api && dbmate up",
+    "db:rollback": "cd apps/api && dbmate rollback"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/bun": "latest"
+  }
+}
