@@ -1,8 +1,9 @@
 FROM golang:1.24-alpine AS build
 WORKDIR /src
-COPY apps/go-worker/go.mod apps/go-worker/go.sum* ./
+# Build context is apps/go-worker/ (fly deploys from the fly.toml directory).
+COPY go.mod go.sum* ./
 RUN go mod download
-COPY apps/go-worker ./
+COPY . ./
 RUN CGO_ENABLED=0 go build -o /out/worker ./cmd/worker
 
 FROM alpine:3.20

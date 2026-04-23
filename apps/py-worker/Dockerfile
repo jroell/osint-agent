@@ -3,8 +3,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl build-esse
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 WORKDIR /app
-COPY apps/py-worker/pyproject.toml apps/py-worker/README* ./
-COPY apps/py-worker/src ./src
+# Build context is apps/py-worker/ (fly deploys from the fly.toml directory).
+COPY pyproject.toml README* ./
+COPY src ./src
 RUN uv sync --no-dev
 ENV PYTHONPATH=/app/src
 EXPOSE 8082

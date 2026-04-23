@@ -53,7 +53,9 @@ cd apps/py-worker
 flyctl secrets set WORKER_PUBLIC_KEY_HEX="$PUB_HEX" --app osint-py-worker
 cd -
 
-echo "✓ Fly secrets set. Now run:"
-echo "  cd apps/go-worker && flyctl deploy"
-echo "  cd apps/py-worker && flyctl deploy"
-echo "  cd apps/api && flyctl deploy"
+echo "✓ Fly secrets set. Now run (from repo root):"
+echo "  cd apps/go-worker && flyctl deploy --remote-only"
+echo "  cd apps/py-worker && flyctl deploy --remote-only"
+echo "  # The api Dockerfile pulls from packages/shared-types, so deploy from"
+echo "  # repo root with --config + --build-context:"
+echo "  flyctl deploy --remote-only --config apps/api/fly.toml --build-context ."

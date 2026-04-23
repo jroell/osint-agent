@@ -32,7 +32,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
-        working-directory: apps/api
+      # api Dockerfile depends on packages/shared-types at repo root, so deploy
+      # from repo root with --config pointing at the app's fly.toml (build
+      # context defaults to the directory containing the config file unless
+      # --build-context overrides it).
+      - run: flyctl deploy --remote-only --config apps/api/fly.toml --build-context .
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
