@@ -371,10 +371,10 @@ git status   # verify files look correct
 git commit -m "chore: monorepo scaffolding + Apache-2.0 license + README"
 
 # Create the remote (if not already done)
-gh repo create osint-agent --public --source=. --remote=origin --push
+gh repo create jroell/osint-agent --public --source=. --remote=origin --push
 ```
 
-Expected outcome: repo visible at `https://github.com/jasonroell/osint-agent` with 1 commit, Apache-2.0 license detected by GitHub, README rendered.
+Expected outcome: repo visible at `https://github.com/jroell/osint-agent` with 1 commit, Apache-2.0 license detected by GitHub, README rendered.
 
 - [ ] **Step 1.11: Commit checkpoint**
 
@@ -2268,7 +2268,7 @@ git commit -m "feat(workers): shared tool-protocol types + Ed25519-signed worker
 
 ```bash
 cd apps/go-worker
-go mod init github.com/jasonroell/osint-agent/go-worker
+go mod init github.com/jroell/osint-agent/apps/go-worker
 go get github.com/labstack/echo/v4@latest
 go get github.com/projectdiscovery/subfinder/v2@latest
 go get github.com/projectdiscovery/dnsx@latest
@@ -2432,7 +2432,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/jasonroell/osint-agent/go-worker/internal/tools"
+	"github.com/jroell/osint-agent/apps/go-worker/internal/tools"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
@@ -2699,7 +2699,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/jasonroell/osint-agent/go-worker/internal/server"
+	"github.com/jroell/osint-agent/apps/go-worker/internal/server"
 )
 
 func main() {
