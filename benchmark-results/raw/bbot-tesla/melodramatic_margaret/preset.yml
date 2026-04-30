@@ -1,0 +1,10 @@
+description: melodramatic_margaret
+config:
+  dns:
+    threads: 25
+    brute_threads: 1000
+flags:
+- subdomain-enum
+output_modules:
+- subdomains
+silent: true

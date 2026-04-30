@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import { verifyIdToken, type FirebaseUser } from "./firebase";
 import { sql } from "../db/client";
+import { config } from "../config";
 
 export type AuthContext = {
   user: FirebaseUser;
@@ -15,6 +16,9 @@ export type AuthContext = {
  */
 export const authPlugin = new Elysia({ name: "auth" })
   .derive({ as: "scoped" }, async ({ request }) => {
+    if (config.dev.authBypass) {
+      return { auth: devAuthContext() };
+    }
     const header = request.headers.get("authorization");
     if (!header?.startsWith("Bearer ")) {
       throw new Response("Missing bearer token", { status: 401 });
@@ -36,6 +40,18 @@ export const authPlugin = new Elysia({ name: "auth" })
       } satisfies { user: FirebaseUser; tenantId: string; userId: string },
     };
   });
+
+function devAuthContext(): AuthContext {
+  return {
+    user: {
+      uid: "dev-user",
+      email: "dev@localhost",
+      name: "Local Dev User",
+    } as unknown as FirebaseUser,
+    tenantId: "00000000-0000-0000-0000-000000000001",
+    userId: "00000000-0000-0000-0000-000000000002",
+  };
+}
 
 async function ensureUserAndTenant(user: FirebaseUser): Promise<{ userId: string; tenantId: string }> {
   const email = user.email ?? `${user.uid}@unknown.local`;

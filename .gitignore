@@ -9,8 +9,12 @@ bun.lockb
 .env
 .env.local
 .env.*.local
+.env.bak.*
 *.pem
 firebase-admin-*.json
+
+# Claude Code local state (lock files, scheduled task state)
+.claude/
 
 # Go
 apps/go-worker/bin/

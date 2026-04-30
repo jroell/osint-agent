@@ -20,6 +20,65 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: api_endpoint_coverage; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.api_endpoint_coverage (
+    target_apex text NOT NULL,
+    endpoints_total integer DEFAULT 0 NOT NULL,
+    api_endpoints integer DEFAULT 0 NOT NULL,
+    graphql_ops integer DEFAULT 0 NOT NULL,
+    subdomains integer DEFAULT 0 NOT NULL,
+    potential_secrets integer DEFAULT 0 NOT NULL,
+    tools_run jsonb DEFAULT '[]'::jsonb NOT NULL,
+    last_scan_at timestamp with time zone,
+    first_scan_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: api_endpoints_discovered; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.api_endpoints_discovered (
+    id bigint NOT NULL,
+    target_apex text NOT NULL,
+    endpoint_url text NOT NULL,
+    endpoint_kind text NOT NULL,
+    api_score smallint,
+    source_url text,
+    discovery_tool text NOT NULL,
+    http_status integer,
+    auth_required boolean,
+    auth_type text,
+    response_sample text,
+    metadata jsonb DEFAULT '{}'::jsonb,
+    first_seen timestamp with time zone DEFAULT now() NOT NULL,
+    last_verified timestamp with time zone,
+    verify_count integer DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: api_endpoints_discovered_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.api_endpoints_discovered_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: api_endpoints_discovered_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.api_endpoints_discovered_id_seq OWNED BY public.api_endpoints_discovered.id;
+
+
+--
 -- Name: credit_ledger; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -221,6 +280,13 @@ ALTER TABLE ONLY public.events ATTACH PARTITION public.events_2026_07 FOR VALUES
 
 
 --
+-- Name: api_endpoints_discovered id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_endpoints_discovered ALTER COLUMN id SET DEFAULT nextval('public.api_endpoints_discovered_id_seq'::regclass);
+
+
+--
 -- Name: credit_ledger id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -232,6 +298,30 @@ ALTER TABLE ONLY public.credit_ledger ALTER COLUMN id SET DEFAULT nextval('publi
 --
 
 ALTER TABLE ONLY public.events ALTER COLUMN id SET DEFAULT nextval('public.events_id_seq'::regclass);
+
+
+--
+-- Name: api_endpoint_coverage api_endpoint_coverage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_endpoint_coverage
+    ADD CONSTRAINT api_endpoint_coverage_pkey PRIMARY KEY (target_apex);
+
+
+--
+-- Name: api_endpoints_discovered api_endpoints_discovered_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_endpoints_discovered
+    ADD CONSTRAINT api_endpoints_discovered_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: api_endpoints_discovered api_endpoints_discovered_target_apex_endpoint_url_discovery_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.api_endpoints_discovered
+    ADD CONSTRAINT api_endpoints_discovered_target_apex_endpoint_url_discovery_key UNIQUE (target_apex, endpoint_url, discovery_tool);
 
 
 --
@@ -328,6 +418,41 @@ ALTER TABLE ONLY public.users
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: api_endpoints_kind_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX api_endpoints_kind_idx ON public.api_endpoints_discovered USING btree (endpoint_kind);
+
+
+--
+-- Name: api_endpoints_last_verified; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX api_endpoints_last_verified ON public.api_endpoints_discovered USING btree (last_verified);
+
+
+--
+-- Name: api_endpoints_metadata_gin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX api_endpoints_metadata_gin ON public.api_endpoints_discovered USING gin (metadata);
+
+
+--
+-- Name: api_endpoints_score_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX api_endpoints_score_idx ON public.api_endpoints_discovered USING btree (api_score) WHERE (api_score >= 5);
+
+
+--
+-- Name: api_endpoints_target_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX api_endpoints_target_idx ON public.api_endpoints_discovered USING btree (target_apex);
 
 
 --
@@ -619,4 +744,5 @@ ALTER TABLE ONLY public.users
 
 INSERT INTO public.schema_migrations (version) VALUES
     ('20260422000001'),
-    ('20260422000002');
+    ('20260422000002'),
+    ('20260429000001');

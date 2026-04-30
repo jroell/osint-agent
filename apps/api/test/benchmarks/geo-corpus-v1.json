@@ -1,0 +1,146 @@
+{
+  "version": "v1.0.0-2026-04-29",
+  "snapshot_date": "2026-04-29",
+  "source": "Hand-curated landmark list, image URLs resolved at prefetch-time via Wikipedia REST API summary, cached locally.",
+  "scoring": "Haversine geodetic-error in km. IM2GPS thresholds: street=1km, city=25km, region=200km, country=750km, continent=2500km.",
+  "subjects": [
+    {
+      "id": "easy-01-eiffel",
+      "wiki_slug": "Eiffel_Tower",
+      "lat": 48.8584,
+      "lng": 2.2945,
+      "difficulty": "easy",
+      "name_for_postmortem": "Eiffel Tower, Paris",
+      "local_path": "benchmark-results/datasets/geo-images/easy-01-eiffel.jpg"
+    },
+    {
+      "id": "easy-02-liberty",
+      "wiki_slug": "Statue_of_Liberty",
+      "lat": 40.6892,
+      "lng": -74.0445,
+      "difficulty": "easy",
+      "name_for_postmortem": "Statue of Liberty, NYC",
+      "local_path": "benchmark-results/datasets/geo-images/easy-02-liberty.jpg"
+    },
+    {
+      "id": "easy-03-sydney-opera",
+      "wiki_slug": "Sydney_Opera_House",
+      "lat": -33.8568,
+      "lng": 151.2153,
+      "difficulty": "easy",
+      "name_for_postmortem": "Sydney Opera House",
+      "local_path": "benchmark-results/datasets/geo-images/easy-03-sydney-opera.jpg"
+    },
+    {
+      "id": "easy-04-taj",
+      "wiki_slug": "Taj_Mahal",
+      "lat": 27.1751,
+      "lng": 78.0421,
+      "difficulty": "easy",
+      "name_for_postmortem": "Taj Mahal, Agra",
+      "local_path": "benchmark-results/datasets/geo-images/easy-04-taj.jpg"
+    },
+    {
+      "id": "easy-05-colosseum",
+      "wiki_slug": "Colosseum",
+      "lat": 41.8902,
+      "lng": 12.4922,
+      "difficulty": "easy",
+      "name_for_postmortem": "Colosseum, Rome",
+      "local_path": "benchmark-results/datasets/geo-images/easy-05-colosseum.jpg"
+    },
+    {
+      "id": "med-01-stbasil",
+      "wiki_slug": "Saint_Basil%27s_Cathedral",
+      "lat": 55.7525,
+      "lng": 37.6231,
+      "difficulty": "medium",
+      "name_for_postmortem": "Saint Basil's Cathedral, Moscow"
+    },
+    {
+      "id": "med-02-charles-bridge",
+      "wiki_slug": "Charles_Bridge",
+      "lat": 50.0865,
+      "lng": 14.4114,
+      "difficulty": "medium",
+      "name_for_postmortem": "Charles Bridge, Prague",
+      "local_path": "benchmark-results/datasets/geo-images/med-02-charles-bridge.jpg"
+    },
+    {
+      "id": "med-03-acropolis",
+      "wiki_slug": "Acropolis_of_Athens",
+      "lat": 37.9715,
+      "lng": 23.7257,
+      "difficulty": "medium",
+      "name_for_postmortem": "Acropolis, Athens",
+      "local_path": "benchmark-results/datasets/geo-images/med-03-acropolis.jpg"
+    },
+    {
+      "id": "med-04-cn-tower",
+      "wiki_slug": "CN_Tower",
+      "lat": 43.6426,
+      "lng": -79.3871,
+      "difficulty": "medium",
+      "name_for_postmortem": "CN Tower, Toronto"
+    },
+    {
+      "id": "med-05-bean",
+      "wiki_slug": "Cloud_Gate",
+      "lat": 41.8827,
+      "lng": -87.6233,
+      "difficulty": "medium",
+      "name_for_postmortem": "Cloud Gate (Bean), Chicago",
+      "local_path": "benchmark-results/datasets/geo-images/med-05-bean.jpg"
+    },
+    {
+      "id": "hard-01-bryggen",
+      "wiki_slug": "Bryggen",
+      "lat": 60.3974,
+      "lng": 5.322,
+      "difficulty": "hard",
+      "name_for_postmortem": "Bryggen, Bergen, Norway",
+      "local_path": "benchmark-results/datasets/geo-images/hard-01-bryggen.jpg"
+    },
+    {
+      "id": "hard-02-cinque-terre",
+      "wiki_slug": "Manarola",
+      "lat": 44.1071,
+      "lng": 9.7283,
+      "difficulty": "hard",
+      "name_for_postmortem": "Manarola, Cinque Terre",
+      "local_path": "benchmark-results/datasets/geo-images/hard-02-cinque-terre.jpg"
+    },
+    {
+      "id": "hard-03-kotor",
+      "wiki_slug": "Kotor",
+      "lat": 42.4247,
+      "lng": 18.7712,
+      "difficulty": "hard",
+      "name_for_postmortem": "Kotor, Montenegro",
+      "local_path": "benchmark-results/datasets/geo-images/hard-03-kotor.jpg"
+    },
+    {
+      "id": "hard-04-uluru",
+      "wiki_slug": "Uluru",
+      "lat": -25.3444,
+      "lng": 131.0369,
+      "difficulty": "hard",
+      "name_for_postmortem": "Uluru, Australia",
+      "local_path": "benchmark-results/datasets/geo-images/hard-04-uluru.jpg"
+    },
+    {
+      "id": "hard-05-pamukkale",
+      "wiki_slug": "Pamukkale",
+      "lat": 37.9203,
+      "lng": 29.1206,
+      "difficulty": "hard",
+      "name_for_postmortem": "Pamukkale, Turkey",
+      "local_path": "benchmark-results/datasets/geo-images/hard-05-pamukkale.jpg"
+    }
+  ],
+  "open_methodology_risks": [
+    "Famous landmarks (easy tier) are essentially memorized by frontier vision models — they reveal raw image-recognition only, not geolocation reasoning. The medium and hard tiers carry the real signal.",
+    "Wikipedia REST summaries can change article images. Pre-fetched local cache freezes the bytes at corpus-pin time.",
+    "A 15-image corpus is a smoke test, not a publishable result. v2 should grow to 100+ images and should follow IM2GPS3k indices for direct comparison with PIGEON / GeoCLIP."
+  ]
+}

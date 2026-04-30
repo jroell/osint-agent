@@ -105,10 +105,18 @@ async def stealth_http(input: dict[str, Any]) -> dict[str, Any]:
 
     body_text = await resp.text()
 
+    # rnet 3.x returns a `StatusCode` object (not an int); use `.as_int()`.
+    status = resp.status.as_int() if hasattr(resp.status, "as_int") else int(resp.status)
+    # rnet 3.x `HeaderMap` is iterable as (bytes, bytes) tuples — no `.items()`.
+    headers: dict[str, str] = {}
+    for k, v in resp.headers:
+        key = k.decode("latin-1") if isinstance(k, (bytes, bytearray)) else str(k)
+        val = v.decode("latin-1") if isinstance(v, (bytes, bytearray)) else str(v)
+        headers[key] = val
     out = StealthHttpOutput(
-        status=int(resp.status),
+        status=status,
         url=str(resp.url),
-        headers={k: v for k, v in resp.headers.items()},
+        headers=headers,
         body=body_text,
         took_ms=int((time.perf_counter() - start) * 1000),
         impersonate=parsed.impersonate,

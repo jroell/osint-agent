@@ -12,6 +12,12 @@ const { shutdown: shutdownTelemetry } = startTelemetry();
 
 const app = new Elysia()
   .use(cors({ origin: true, credentials: true }))
+  .get("/", () => ({
+    service: "osint-api",
+    version: "0.1.0",
+    mcp: "/mcp (POST, GET, DELETE — Streamable HTTP)",
+    endpoints: ["/healthz", "/me", "/tools", "/mcp", "/billing/checkout", "/billing/webhook"],
+  }))
   .get("/healthz", () => ({ ok: true, service: "osint-api", version: "0.1.0" }))
   .post("/billing/webhook", async ({ request }) => {
     const rawBody = await request.text();
@@ -24,11 +30,10 @@ const app = new Elysia()
   .get("/tools", () => ({
     tools: toolRegistry.list().map((t) => ({ name: t.name, description: t.description })),
   }))
-  .post("/mcp", async ({ request, auth }) => {
+  .all("/mcp", async ({ request, auth }) => {
     const transport = streamableTransport();
     const server = buildMcpServer(auth);
     await server.connect(transport);
-    // @ts-ignore — streamable HTTP expects Node req/res; Bun adapter will handle
     return transport.handleRequest(request);
   })
   .post("/billing/checkout", async ({ auth, body, request }) => {

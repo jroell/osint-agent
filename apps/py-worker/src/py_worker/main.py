@@ -10,6 +10,14 @@ from pydantic import BaseModel
 
 from py_worker.auth import SigningConfig, require_signed_request
 from py_worker.tools.stealth_http import stealth_http
+from py_worker.tools.holehe_check import holehe_check
+from py_worker.tools.maigret_search import maigret_search
+from py_worker.tools.sherlock_search import sherlock_search
+from py_worker.tools.theharvester_run import theharvester
+from py_worker.tools.ghunt_run import ghunt_email
+from py_worker.tools.pdf_analyze import pdf_document_analyze
+from py_worker.tools.exif_geolocate import exif_extract_geolocate
+from py_worker.tools.google_trends import google_trends_lookup
 
 
 class ToolError(BaseModel):
@@ -46,6 +54,14 @@ def healthz() -> dict[str, str]:
 
 _TOOLS: dict[str, Callable[..., Any]] = {
     "stealth_http_fetch": stealth_http,
+    "email_holehe": holehe_check,
+    "username_search_maigret": maigret_search,
+    "username_search_sherlock": sherlock_search,
+    "theharvester": theharvester,
+    "google_account_ghunt": ghunt_email,
+    "pdf_document_analyze": pdf_document_analyze,
+    "exif_extract_geolocate": exif_extract_geolocate,
+    "google_trends_lookup": google_trends_lookup,
 }
 
 

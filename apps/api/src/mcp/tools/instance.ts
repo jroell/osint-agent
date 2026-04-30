@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { AuthContext } from "../../auth/middleware";
 import { spendCredits, InsufficientCreditsError } from "../../billing/credits";
 import { writeEvent } from "../../events/stream";
+import { config } from "../../config";
 
 export interface ToolDefinition<Input extends z.ZodType> {
   name: string;
@@ -34,63 +35,68 @@ export class ToolRegistry {
 
     const parsed = tool.inputSchema.parse(input);
     const traceId = crypto.randomUUID();
-
-    await writeEvent({
-      tenantId: ctx.tenantId,
-      userId: ctx.userId,
-      eventType: "tool.called",
-      payload: { tool: name, input: parsed },
-      traceId,
-    });
-
-    try {
-      await spendCredits({
+    if (!config.dev.authBypass) {
+      await writeEvent({
         tenantId: ctx.tenantId,
         userId: ctx.userId,
-        millicredits: tool.costMillicredits,
-        reason: `tool:${name}`,
+        eventType: "tool.called",
+        payload: { tool: name, input: parsed },
         traceId,
       });
-    } catch (e) {
-      if (e instanceof InsufficientCreditsError) {
-        await writeEvent({
+
+      try {
+        await spendCredits({
           tenantId: ctx.tenantId,
           userId: ctx.userId,
-          eventType: "tool.failed",
-          payload: { tool: name, reason: "insufficient_credits" },
+          millicredits: tool.costMillicredits,
+          reason: `tool:${name}`,
           traceId,
         });
+      } catch (e) {
+        if (e instanceof InsufficientCreditsError) {
+          await writeEvent({
+            tenantId: ctx.tenantId,
+            userId: ctx.userId,
+            eventType: "tool.failed",
+            payload: { tool: name, reason: "insufficient_credits" },
+            traceId,
+          });
+          throw e;
+        }
         throw e;
       }
-      throw e;
     }
 
     try {
       const result = await tool.handler(parsed, ctx);
-      await writeEvent({
-        tenantId: ctx.tenantId,
-        userId: ctx.userId,
-        eventType: "tool.succeeded",
-        payload: { tool: name },
-        traceId,
-      });
+      if (!config.dev.authBypass) {
+        await writeEvent({
+          tenantId: ctx.tenantId,
+          userId: ctx.userId,
+          eventType: "tool.succeeded",
+          payload: { tool: name },
+          traceId,
+        });
+      }
       return result;
     } catch (e) {
-      // Refund on failure
-      await spendCredits({
-        tenantId: ctx.tenantId,
-        userId: ctx.userId,
-        millicredits: -tool.costMillicredits,
-        reason: `refund:${name}`,
-        traceId,
-      }).catch(() => {}); // refund is best-effort; don't mask the original error
-      await writeEvent({
-        tenantId: ctx.tenantId,
-        userId: ctx.userId,
-        eventType: "tool.failed",
-        payload: { tool: name, error: (e as Error).message },
-        traceId,
-      });
+      if (!config.dev.authBypass) {
+        // Refund on failure
+        await spendCredits({
+          tenantId: ctx.tenantId,
+          userId: ctx.userId,
+          millicredits: -tool.costMillicredits,
+          reason: `refund:${name}`,
+          traceId,
+        }).catch(() => {}); // refund is best-effort; don't mask the original error
+        await writeEvent({
+          tenantId: ctx.tenantId,
+          userId: ctx.userId,
+          eventType: "tool.failed",
+          payload: { tool: name, error: (e as Error).message },
+          traceId,
+        });
+      }
       throw e;
     }
   }

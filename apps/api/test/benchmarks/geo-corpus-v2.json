@@ -1,0 +1,148 @@
+{
+  "version": "v2.0.0-2026-04-29",
+  "snapshot_date": "2026-04-29",
+  "source": "Hand-curated less-iconic Wikipedia city/region summary images. Tests visual geolocation reasoning rather than landmark name-recognition. Each subject is an ordinary mid-sized city or specific regional feature whose Wikipedia summary thumbnail is a panorama/streetscape — NOT a globally-iconic monument.",
+  "scoring": "Haversine geodetic-error in km. IM2GPS thresholds: street=1km, city=25km, region=200km, country=750km, continent=2500km.",
+  "design_intent": "v1 produced a misleading 0.056km median because frontier models recognized famous landmarks by name. v2 substitutes ordinary city skylines and regional landscapes. A vision model that scores well on v2 is doing real visual geolocation reasoning (architecture, vegetation, signage, road markings, vehicle types) rather than image classification.",
+  "subjects": [
+    {
+      "id": "city-01-madison-wi",
+      "wiki_slug": "Madison,_Wisconsin",
+      "lat": 43.0731,
+      "lng": -89.4012,
+      "difficulty": "less-iconic",
+      "name_for_postmortem": "Madison, Wisconsin (US state capital, not famous)",
+      "local_path": "benchmark-results/datasets/geo-images-v2/city-01-madison-wi.jpg"
+    },
+    {
+      "id": "city-02-chemnitz",
+      "wiki_slug": "Chemnitz",
+      "lat": 50.8278,
+      "lng": 12.9214,
+      "difficulty": "less-iconic",
+      "name_for_postmortem": "Chemnitz, Saxony, Germany",
+      "local_path": "benchmark-results/datasets/geo-images-v2/city-02-chemnitz.jpg"
+    },
+    {
+      "id": "city-03-coimbra",
+      "wiki_slug": "Coimbra",
+      "lat": 40.2056,
+      "lng": -8.4196,
+      "difficulty": "less-iconic",
+      "name_for_postmortem": "Coimbra, Portugal",
+      "local_path": "benchmark-results/datasets/geo-images-v2/city-03-coimbra.jpg"
+    },
+    {
+      "id": "city-04-galway",
+      "wiki_slug": "Galway",
+      "lat": 53.2707,
+      "lng": -9.0568,
+      "difficulty": "less-iconic",
+      "name_for_postmortem": "Galway, Ireland",
+      "local_path": "benchmark-results/datasets/geo-images-v2/city-04-galway.jpg"
+    },
+    {
+      "id": "city-05-hamamatsu",
+      "wiki_slug": "Hamamatsu",
+      "lat": 34.7108,
+      "lng": 137.7261,
+      "difficulty": "less-iconic",
+      "name_for_postmortem": "Hamamatsu, Japan",
+      "local_path": "benchmark-results/datasets/geo-images-v2/city-05-hamamatsu.jpg"
+    },
+    {
+      "id": "city-06-recife",
+      "wiki_slug": "Recife",
+      "lat": -8.0476,
+      "lng": -34.877,
+      "difficulty": "less-iconic",
+      "name_for_postmortem": "Recife, Brazil",
+      "local_path": "benchmark-results/datasets/geo-images-v2/city-06-recife.jpg"
+    },
+    {
+      "id": "city-07-asuncion",
+      "wiki_slug": "Asunci%C3%B3n",
+      "lat": -25.2637,
+      "lng": -57.5759,
+      "difficulty": "less-iconic",
+      "name_for_postmortem": "Asunción, Paraguay"
+    },
+    {
+      "id": "city-08-yerevan",
+      "wiki_slug": "Yerevan",
+      "lat": 40.1792,
+      "lng": 44.4991,
+      "difficulty": "less-iconic",
+      "name_for_postmortem": "Yerevan, Armenia",
+      "local_path": "benchmark-results/datasets/geo-images-v2/city-08-yerevan.jpg"
+    },
+    {
+      "id": "city-09-vilnius",
+      "wiki_slug": "Vilnius",
+      "lat": 54.6872,
+      "lng": 25.2797,
+      "difficulty": "less-iconic",
+      "name_for_postmortem": "Vilnius, Lithuania",
+      "local_path": "benchmark-results/datasets/geo-images-v2/city-09-vilnius.jpg"
+    },
+    {
+      "id": "city-10-suva",
+      "wiki_slug": "Suva",
+      "lat": -18.1416,
+      "lng": 178.4419,
+      "difficulty": "less-iconic",
+      "name_for_postmortem": "Suva, Fiji",
+      "local_path": "benchmark-results/datasets/geo-images-v2/city-10-suva.jpg"
+    },
+    {
+      "id": "region-01-faroe",
+      "wiki_slug": "Faroe_Islands",
+      "lat": 62,
+      "lng": -6.7833,
+      "difficulty": "regional-landscape",
+      "name_for_postmortem": "Faroe Islands",
+      "local_path": "benchmark-results/datasets/geo-images-v2/region-01-faroe.jpg"
+    },
+    {
+      "id": "region-02-azores",
+      "wiki_slug": "Azores",
+      "lat": 37.7412,
+      "lng": -25.6756,
+      "difficulty": "regional-landscape",
+      "name_for_postmortem": "Azores, Portugal",
+      "local_path": "benchmark-results/datasets/geo-images-v2/region-02-azores.jpg"
+    },
+    {
+      "id": "region-03-svalbard",
+      "wiki_slug": "Svalbard",
+      "lat": 78,
+      "lng": 16,
+      "difficulty": "regional-landscape",
+      "name_for_postmortem": "Svalbard, Norway",
+      "local_path": "benchmark-results/datasets/geo-images-v2/region-03-svalbard.jpg"
+    },
+    {
+      "id": "region-04-altai",
+      "wiki_slug": "Altai_Mountains",
+      "lat": 49.8,
+      "lng": 87,
+      "difficulty": "regional-landscape",
+      "name_for_postmortem": "Altai Mountains, Central Asia",
+      "local_path": "benchmark-results/datasets/geo-images-v2/region-04-altai.jpg"
+    },
+    {
+      "id": "region-05-patagonia",
+      "wiki_slug": "Patagonia",
+      "lat": -48.5,
+      "lng": -71,
+      "difficulty": "regional-landscape",
+      "name_for_postmortem": "Patagonia, Chile/Argentina",
+      "local_path": "benchmark-results/datasets/geo-images-v2/region-05-patagonia.jpg"
+    }
+  ],
+  "open_methodology_risks": [
+    "Some 'less-iconic' cities (Vilnius, Recife) are well-known internationally and may still trigger landmark recognition. Stronger v3 should include random street-level photos with no city skyline visible.",
+    "Wikipedia summary images often DO show recognizable landmarks (e.g. the Galway hooker boat statue) — true street-view geolocation requires Mapillary or Flickr CC random samples.",
+    "Difficulty tier names are heuristic; per-subject difficulty should be revised after first run based on which images the model actually got right vs wrong."
+  ]
+}

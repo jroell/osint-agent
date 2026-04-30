@@ -36,6 +36,18 @@
         "typescript": "^5.7.0",
       },
     },
+    "packages/benchmark-suite": {
+      "name": "@osint/benchmark-suite",
+      "version": "0.0.1",
+      "dependencies": {
+        "@osint/shared-types": "workspace:*",
+        "zod": "4.3.6",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.7.0",
+      },
+    },
     "packages/shared-types": {
       "name": "@osint/shared-types",
       "version": "0.0.1",
@@ -248,6 +260,8 @@
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.40.0", "", {}, "sha512-cifvXDhcqMwwTlTK04GBNeIe7yyo28Mfby85QXFe1Yk8nmi36Ab/5UQwptOx84SsoGNRg+EVSjwzfSZMy6pmlw=="],
 
     "@opentelemetry/sql-common": ["@opentelemetry/sql-common@0.41.2", "", { "dependencies": { "@opentelemetry/core": "^2.0.0" }, "peerDependencies": { "@opentelemetry/api": "^1.1.0" } }, "sha512-4mhWm3Z8z+i508zQJ7r6Xi7y4mmoJpdvH0fZPFRkWrdp5fq7hhZ2HhYokEOLkfqSMgPR4Z9EyB3DBkbKGOqZiQ=="],
+
+    "@osint/benchmark-suite": ["@osint/benchmark-suite@workspace:packages/benchmark-suite"],
 
     "@osint/shared-types": ["@osint/shared-types@workspace:packages/shared-types"],
 

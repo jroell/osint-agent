@@ -8,6 +8,21 @@ dependencies = [
   "rnet>=3.0.0rc22",
   "pydantic>=2.9",
   "pynacl>=1.5",
+  # Identity / social recon stack (Phase-1 free-tier).
+  # maigret/sherlock/holehe are imported in-process. ghunt and theHarvester
+  # have conflicting transitive deps and are run as isolated `uv tool` subprocesses
+  # (see infra/scripts/dev.sh). Install them once with:
+  #   uv tool install ghunt
+  #   uv tool install --from git+https://github.com/laramies/theHarvester.git theHarvester
+  "maigret>=0.5",        # 3000+ sites, by Bellingcat-recommended Sober0Pi
+  "sherlock-project>=0.15",
+  "holehe>=1.61",
+  # Document / image analysis (Phase-1 free).
+  "pypdf>=5.0",          # PDF text + metadata extraction
+  "pillow>=11.0",        # image loading
+  "exifread>=3.0",       # EXIF extraction (handles more tags than PIL)
+  # Google Trends — unofficial API wrapper (no key, fragile to TOS changes)
+  "pytrends>=4.9.2",
 ]
 
 [project.optional-dependencies]

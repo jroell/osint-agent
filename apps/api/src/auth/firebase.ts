@@ -21,13 +21,12 @@ function initFirebase() {
   });
 }
 
-initFirebase();
-
 /**
  * Verifies a Firebase ID token (JWT) and returns the decoded payload.
  * Throws if invalid, expired, or issuer mismatches our project.
  */
 export async function verifyIdToken(idToken: string): Promise<DecodedIdToken> {
+  initFirebase();
   return getAuth().verifyIdToken(idToken, true /* checkRevoked */);
 }
 

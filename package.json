@@ -7,11 +7,15 @@
     "lint": "bun --filter '*' lint",
     "test": "bun --filter '*' test",
     "build": "bun --filter '*' build",
+    "dev": "bash infra/scripts/dev.sh",
     "dev:api": "bun --filter api dev",
+    "dev:go-worker": "sh -c 'set -a; . ./.env; set +a; cd apps/go-worker && PORT=${GO_WORKER_PORT:-8081} go run ./cmd/worker'",
+    "dev:py-worker": "sh -c 'set -a; . ./.env; set +a; cd apps/py-worker && uv sync --quiet && PORT=${PY_WORKER_PORT:-8082} uv run python -m py_worker.main'",
+    "gen:worker-keys": "node infra/scripts/gen-worker-keys.mjs",
     "db:up": "sh -c 'if [ -f infra/docker-compose.yml ]; then docker compose -f infra/docker-compose.yml up -d; else echo \"Skipping db:up: infra/docker-compose.yml not found\"; fi'",
     "db:down": "sh -c 'if [ -f infra/docker-compose.yml ]; then docker compose -f infra/docker-compose.yml down; else echo \"Skipping db:down: infra/docker-compose.yml not found\"; fi'",
-    "db:migrate": "sh -c 'if [ -d apps/api ]; then cd apps/api && dbmate --migrations-dir src/db/migrations --schema-file src/db/schema.sql up; else echo \"Skipping db:migrate: apps/api not found\"; fi'",
-    "db:rollback": "sh -c 'if [ -d apps/api ]; then cd apps/api && dbmate --migrations-dir src/db/migrations --schema-file src/db/schema.sql rollback; else echo \"Skipping db:rollback: apps/api not found\"; fi'"
+    "db:migrate": "sh -c 'set -a; [ -f .env ] && . ./.env; set +a; cd apps/api && dbmate --migrations-dir src/db/migrations --schema-file src/db/schema.sql up'",
+    "db:rollback": "sh -c 'set -a; [ -f .env ] && . ./.env; set +a; cd apps/api && dbmate --migrations-dir src/db/migrations --schema-file src/db/schema.sql rollback'"
   },
   "devDependencies": {
     "typescript": "^5.7.0",

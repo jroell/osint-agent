@@ -1,0 +1,64 @@
+name: Benchmarks (adopt tier)
+
+on:
+  schedule:
+    # Mondays at 13:00 UTC. Weekly cadence catches regressions without burning CI minutes.
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: benchmarks-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  subdomain-faceoff:
+    name: Subdomain face-off (tesla.com)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: 1.2.x }
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.24" }
+      - name: Install subfinder + amass
+        run: |
+          go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          go install github.com/owasp-amass/amass/v4/...@master
+      - run: bun install --frozen-lockfile
+      - name: Run scans
+        run: |
+          mkdir -p benchmark-results/raw
+          /usr/bin/time -p subfinder -d tesla.com -silent -o benchmark-results/raw/subfinder-tesla.com.txt 2> benchmark-results/raw/subfinder-tesla.com.time
+          /usr/bin/time -p amass enum -passive -d tesla.com -o benchmark-results/raw/amass-tesla.com.raw.txt 2> benchmark-results/raw/amass-tesla.com.time || true
+          grep -oE '[a-zA-Z0-9._-]+\.tesla\.com' benchmark-results/raw/amass-tesla.com.raw.txt | sort -u > benchmark-results/raw/amass-tesla.com.txt
+      - name: Score
+        run: bun packages/benchmark-suite/src/benchmarks/subdomain-faceoff.ts tesla.com
+      - name: Upload leaderboard delta
+        uses: actions/upload-artifact@v4
+        with:
+          name: leaderboard-${{ github.run_id }}
+          path: benchmark-results/leaderboard.jsonl
+
+  osint-bench-asset:
+    name: OSINT-Bench-Asset (small subset)
+    runs-on: ubuntu-latest
+    needs: subdomain-faceoff
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: 1.2.x }
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.24" }
+      - run: go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+      - run: bun install --frozen-lockfile
+      - name: Run scans for asset corpus
+        run: |
+          mkdir -p benchmark-results/raw
+          for d in tesla.com gitlab.com hackerone.com; do
+            /usr/bin/time -p subfinder -d "$d" -silent -o "benchmark-results/raw/subfinder-${d}.txt" 2> "benchmark-results/raw/subfinder-${d}.time"
+          done
+      - run: bun packages/benchmark-suite/src/benchmarks/osint-bench-asset.ts subfinder tesla,gitlab,hackerone
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asset-leaderboard-${{ github.run_id }}
+          path: benchmark-results/leaderboard.jsonl

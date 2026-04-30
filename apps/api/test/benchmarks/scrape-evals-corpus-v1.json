@@ -1,0 +1,52 @@
+{
+  "version": "v1.0.0-2026-04-29",
+  "snapshot_date": "2026-04-29",
+  "source": "Hand-curated 30-URL corpus spanning 6 categories — faithful smaller version of Firecrawl's scrape-evals methodology (1,000 random URLs, 13 engines, coverage + quality metrics). v2 will substitute a sampled Tranco/Common-Crawl set.",
+  "methodology_reference": "https://www.firecrawl.dev/blog/the-worlds-best-web-data-api-v25",
+  "scoring": {
+    "coverage": "Did the scraper return non-empty extracted content (>500 chars after main-content extraction)? Boolean per (scraper, url). Coverage% = passes/total.",
+    "quality": "LLM-judge (gpt-5.4-mini) rates extracted content 0..1 against a reference 'what would a human reader expect from this page'. Headline = mean quality across covered URLs."
+  },
+  "subjects": [
+    { "id": "news-01-bbc", "url": "https://www.bbc.com/news/world", "category": "news", "expected_marker": "BBC" },
+    { "id": "news-02-reuters", "url": "https://www.reuters.com/", "category": "news", "expected_marker": "Reuters" },
+    { "id": "news-03-nyt", "url": "https://www.nytimes.com/section/world", "category": "news", "expected_marker": "Times" },
+    { "id": "news-04-guardian", "url": "https://www.theguardian.com/world", "category": "news", "expected_marker": "Guardian" },
+    { "id": "news-05-aljazeera", "url": "https://www.aljazeera.com/news/", "category": "news", "expected_marker": "Jazeera" },
+
+    { "id": "ecom-01-amazon", "url": "https://www.amazon.com/Echo-Dot-newest-model/dp/B09B8V1LZ3", "category": "ecommerce", "expected_marker": "Echo" },
+    { "id": "ecom-02-etsy", "url": "https://www.etsy.com/", "category": "ecommerce", "expected_marker": "Etsy" },
+    { "id": "ecom-03-bestbuy", "url": "https://www.bestbuy.com/", "category": "ecommerce", "expected_marker": "Best Buy" },
+    { "id": "ecom-04-walmart", "url": "https://www.walmart.com/", "category": "ecommerce", "expected_marker": "Walmart" },
+    { "id": "ecom-05-shopify", "url": "https://www.shopify.com/", "category": "ecommerce", "expected_marker": "Shopify" },
+
+    { "id": "docs-01-mdn", "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map", "category": "docs", "expected_marker": "Array.prototype.map" },
+    { "id": "docs-02-nodejs", "url": "https://nodejs.org/api/fs.html", "category": "docs", "expected_marker": "File system" },
+    { "id": "docs-03-react", "url": "https://react.dev/learn/your-first-component", "category": "docs", "expected_marker": "component" },
+    { "id": "docs-04-postgres", "url": "https://www.postgresql.org/docs/current/sql-select.html", "category": "docs", "expected_marker": "SELECT" },
+    { "id": "docs-05-aws", "url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html", "category": "docs", "expected_marker": "S3" },
+
+    { "id": "spa-01-vercel", "url": "https://vercel.com/", "category": "spa", "expected_marker": "Vercel" },
+    { "id": "spa-02-linear", "url": "https://linear.app/", "category": "spa", "expected_marker": "Linear" },
+    { "id": "spa-03-figma", "url": "https://www.figma.com/", "category": "spa", "expected_marker": "Figma" },
+    { "id": "spa-04-notion", "url": "https://www.notion.so/", "category": "spa", "expected_marker": "Notion" },
+    { "id": "spa-05-stripe", "url": "https://stripe.com/", "category": "spa", "expected_marker": "Stripe" },
+
+    { "id": "forum-01-stackoverflow", "url": "https://stackoverflow.com/questions/tagged/javascript", "category": "forum", "expected_marker": "Stack Overflow" },
+    { "id": "forum-02-reddit", "url": "https://www.reddit.com/r/programming/", "category": "forum", "expected_marker": "Reddit" },
+    { "id": "forum-03-hn", "url": "https://news.ycombinator.com/", "category": "forum", "expected_marker": "Hacker News" },
+    { "id": "forum-04-discourse", "url": "https://meta.discourse.org/", "category": "forum", "expected_marker": "Discourse" },
+    { "id": "forum-05-lobsters", "url": "https://lobste.rs/", "category": "forum", "expected_marker": "Lobster" },
+
+    { "id": "blog-01-substack", "url": "https://stratechery.com/", "category": "blog", "expected_marker": "Stratechery" },
+    { "id": "blog-02-anthropic", "url": "https://www.anthropic.com/news", "category": "blog", "expected_marker": "Anthropic" },
+    { "id": "blog-03-openai", "url": "https://openai.com/blog/", "category": "blog", "expected_marker": "OpenAI" },
+    { "id": "blog-04-cloudflare", "url": "https://blog.cloudflare.com/", "category": "blog", "expected_marker": "Cloudflare" },
+    { "id": "blog-05-googleblog", "url": "https://blog.google/", "category": "blog", "expected_marker": "Google" }
+  ],
+  "open_methodology_risks": [
+    "Hand-curated 30-URL set is too small for vendor-comparable claims. v2 must sample 100+ random URLs from Tranco top-1M or Common Crawl.",
+    "Expected_marker is a weak quality proxy; LLM-judge is more reliable but adds cost and judge bias.",
+    "URLs rotate. Pin via WaybackMachine snapshot or HTML SHA-256 in v2 for reproducibility across re-runs."
+  ]
+}
