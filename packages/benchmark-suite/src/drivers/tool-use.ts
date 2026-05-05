@@ -19,6 +19,42 @@ const PERPLEXITY_KEY = () => process.env.PERPLEXITY_API_KEY;
 const FIRECRAWL_KEY = () => process.env.FIRECRAWL_API_KEY;
 const ANTHROPIC_KEY = () => process.env.ANTHROPIC_API_KEY;
 
+// Bun fetch has no built-in retry/timeout. Long benchmark runs hit transient
+// "socket closed unexpectedly" errors (Anthropic keep-alive drops, mid-flight
+// network hiccups) that hang the agent loop indefinitely. Apply a uniform
+// timeout + exponential backoff to the model-loop fetch — applied identically
+// to every question, so it doesn't bias the score.
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  opts: { timeoutMs: number; retries: number; label: string },
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= opts.retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
+    try {
+      const res = await fetch(url, { ...init, signal: controller.signal });
+      clearTimeout(timer);
+      if ((res.status === 429 || res.status >= 500) && attempt < opts.retries) {
+        const wait = Math.min(2000 * 2 ** attempt, 20000);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e;
+      if (attempt < opts.retries) {
+        const wait = Math.min(2000 * 2 ** attempt, 20000);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+    }
+  }
+  throw new Error(`${opts.label} failed after ${opts.retries + 1} attempts: ${(lastErr as Error)?.message ?? "unknown"}`);
+}
+
 export interface ToolDef {
   name: string;
   description: string;
@@ -118,7 +154,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "wikipedia_get",
-    description: "Fetch a specific Wikipedia article's summary by exact title (use the title as returned by wikipedia_search). Returns extract, lat/lng if applicable, and the full URL.",
+    description: "Fetch a specific Wikipedia article's summary by exact title (use the title as returned by wikipedia_search). Returns extract, lat/lng if applicable, and the full URL. SHORT (~500 chars). Use wikipedia_get_content for the full article.",
     input_schema: {
       type: "object",
       properties: { title: { type: "string", description: "Exact article title" } },
@@ -130,6 +166,43 @@ export const TOOLS: ToolDef[] = [
       if (!res.ok) throw new Error(`wikipedia_get ${res.status}`);
       const d = (await res.json()) as { extract?: string; coordinates?: unknown; content_urls?: { desktop?: { page?: string } }; description?: string };
       return { extract: d.extract, description: d.description, coordinates: d.coordinates, url: d.content_urls?.desktop?.page };
+    },
+  },
+  {
+    name: "wikipedia_get_content",
+    description: "Fetch the FULL plain-text content of a Wikipedia article by title. Returns up to ~12k chars per call; use start_offset to page through longer articles. CRITICAL for multi-hop research questions where the answer is buried in a body section (Career, Filmography, Discography, Awards, etc.) — wikipedia_get only returns the lead summary which is rarely enough. FREE, no auth.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Exact Wikipedia article title (use wikipedia_search to find)" },
+        start_offset: { type: "number", description: "Character offset to start reading from. Default 0. Use the returned next_offset to page through long articles." },
+        max_chars: { type: "number", description: "Max chars to return (default 12000, max 30000)." },
+      },
+      required: ["title"],
+    },
+    invoke: async (i) => {
+      const url = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=true&exsectionformat=plain&format=json&titles=${encodeURIComponent(String(i.title))}`;
+      const res = await fetch(url, { headers: { "user-agent": "osint-agent-benchmark/0.1 (jroell@batterii.com)" } });
+      if (!res.ok) throw new Error(`wikipedia_get_content ${res.status}`);
+      const d = (await res.json()) as { query?: { pages?: Record<string, { title?: string; extract?: string; missing?: string }> } };
+      const pages = Object.values(d.query?.pages ?? {});
+      const page = pages[0];
+      if (!page || page.missing !== undefined) {
+        return { error: `article not found: ${i.title}`, suggestion: "use wikipedia_search to find the exact title" };
+      }
+      const full = page.extract ?? "";
+      const startOffset = Math.max(0, Number(i.start_offset ?? 0));
+      const maxChars = Math.min(Math.max(1000, Number(i.max_chars ?? 12000)), 30000);
+      const chunk = full.slice(startOffset, startOffset + maxChars);
+      const nextOffset = startOffset + chunk.length;
+      return {
+        title: page.title,
+        total_chars: full.length,
+        start_offset: startOffset,
+        end_offset: nextOffset,
+        next_offset: nextOffset < full.length ? nextOffset : null,
+        content: chunk,
+      };
     },
   },
   {
@@ -342,11 +415,12 @@ export async function runAnthropicAgent(opts: {
       body.output_config = { effort: opts.reasoningEffort };
     }
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const iterStart = performance.now();
+    const res = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
       body: JSON.stringify(body),
-    });
+    }, { timeoutMs: 120_000, retries: 3, label: "anthropic" });
     if (!res.ok) throw new Error(`anthropic ${res.status}: ${(await res.text()).slice(0, 400)}`);
     const data = (await res.json()) as { content: AnthropicContentBlock[]; stop_reason: string };
     trace.stop_reason = data.stop_reason;
@@ -361,7 +435,13 @@ export async function runAnthropicAgent(opts: {
     if (toolUseBlocks.length === 0) {
       // No tool calls — model is done
       trace.final_text = textBlocks.join("\n");
+      if (process.env.AGENT_VERBOSE) console.error(`    [iter ${iter + 1}] DONE in ${((performance.now() - iterStart) / 1000).toFixed(1)}s, stop=${data.stop_reason}`);
       break;
+    }
+
+    if (process.env.AGENT_VERBOSE) {
+      const callNames = toolUseBlocks.map((b) => b.name).join(",");
+      console.error(`    [iter ${iter + 1}] +${((performance.now() - iterStart) / 1000).toFixed(1)}s, ${toolUseBlocks.length} tool(s): ${callNames}`);
     }
 
     // Execute each tool_use block in parallel and gather results
@@ -456,9 +536,10 @@ export async function runGeminiAgent(opts: {
       },
     };
 
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${opts.model}:generateContent?key=${key}`,
       { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+      { timeoutMs: 120_000, retries: 3, label: "gemini" },
     );
     if (!res.ok) throw new Error(`gemini ${res.status}: ${(await res.text()).slice(0, 400)}`);
     const data = (await res.json()) as {

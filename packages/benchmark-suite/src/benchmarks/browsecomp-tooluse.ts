@@ -79,16 +79,23 @@ async function main() {
   let totalToolCalls = 0;
   let totalIterations = 0;
 
+  const QUESTION_TIMEOUT_MS = Number(process.env.QUESTION_TIMEOUT_MS ?? "600000"); // 10 min default
   for (const q of questions) {
     attempted++;
     try {
-      const trace = await runAnthropicAgent({
-        model,
-        system: SYSTEM,
-        userPrompt: q.question,
-        reasoningEffort: REASONING_EFFORT,
-        maxIterations: 10,
-      });
+      console.error(`  [${q.id}] starting…`);
+      const trace = await Promise.race([
+        runAnthropicAgent({
+          model,
+          system: SYSTEM,
+          userPrompt: q.question,
+          reasoningEffort: REASONING_EFFORT,
+          maxIterations: Number(process.env.MAX_ITERATIONS ?? "20"),
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`question timeout after ${QUESTION_TIMEOUT_MS / 1000}s`)), QUESTION_TIMEOUT_MS),
+        ),
+      ]);
       totalToolCalls += trace.tool_calls.length;
       totalIterations += trace.iterations;
       const verdict = await judgeAnswer(q, trace.final_text);
