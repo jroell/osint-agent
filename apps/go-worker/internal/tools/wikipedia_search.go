@@ -15,19 +15,24 @@ import (
 // level access. Distinct from `wikidata_lookup` (structured data) and
 // `wikipedia_user_intel` (user accounts) — this surface is article text.
 //
-// Three modes:
+// Four modes:
 //
-//   - "summary"      : by article title → REST summary with extract,
-//                       description, thumbnail, last-edit timestamp,
-//                       content URL.
-//   - "search"       : keyword query → matching articles with HTML-marked
-//                       snippets, word count, byte size, last-edit
-//                       timestamp. Article creation around current events
-//                       is a unique ER signal — a brand-new article on
-//                       a controversy is a high-leverage indicator.
-//   - "article_meta" : by title → categories (taxonomic placement),
-//                       recent revisions (who's editing + when), article
-//                       length, last-rev id.
+//   - "summary"         : by article title → REST summary with extract,
+//                          description, thumbnail, last-edit timestamp,
+//                          content URL. Lead paragraph only (~500 chars).
+//   - "search"          : keyword query → matching articles with HTML-marked
+//                          snippets, word count, byte size, last-edit
+//                          timestamp. Article creation around current events
+//                          is a unique ER signal — a brand-new article on
+//                          a controversy is a high-leverage indicator.
+//   - "article_meta"    : by title → categories (taxonomic placement),
+//                          recent revisions (who's editing + when), article
+//                          length, last-rev id.
+//   - "article_content" : by title → FULL plain-text article body
+//                          (typically 30k–300k chars). Pageable via
+//                          start_offset / max_chars. Critical for multi-hop
+//                          fact extraction where the answer is in a body
+//                          section (Career, Filmography, Awards, etc.).
 //
 // Free, no auth. Configurable language via `lang` param (default "en").
 
@@ -68,20 +73,31 @@ type WikiArticleMeta struct {
 	URL           string         `json:"url,omitempty"`
 }
 
-type WikipediaSearchOutput struct {
-	Mode              string           `json:"mode"`
-	Lang              string           `json:"lang,omitempty"`
-	Query             string           `json:"query,omitempty"`
-	TotalCount        int              `json:"total_count,omitempty"`
-	Returned          int              `json:"returned"`
-	Summary           *WikiSummary     `json:"summary,omitempty"`
-	Hits              []WikiSearchHit  `json:"hits,omitempty"`
-	ArticleMeta       *WikiArticleMeta `json:"article_meta,omitempty"`
+type WikiArticleContent struct {
+	Title       string `json:"title"`
+	TotalChars  int    `json:"total_chars"`
+	StartOffset int    `json:"start_offset"`
+	EndOffset   int    `json:"end_offset"`
+	NextOffset  *int   `json:"next_offset,omitempty"`
+	Content     string `json:"content"`
+	URL         string `json:"url,omitempty"`
+}
 
-	HighlightFindings []string         `json:"highlight_findings"`
-	Source            string           `json:"source"`
-	TookMs            int64            `json:"tookMs"`
-	Note              string           `json:"note,omitempty"`
+type WikipediaSearchOutput struct {
+	Mode              string              `json:"mode"`
+	Lang              string              `json:"lang,omitempty"`
+	Query             string              `json:"query,omitempty"`
+	TotalCount        int                 `json:"total_count,omitempty"`
+	Returned          int                 `json:"returned"`
+	Summary           *WikiSummary        `json:"summary,omitempty"`
+	Hits              []WikiSearchHit     `json:"hits,omitempty"`
+	ArticleMeta       *WikiArticleMeta    `json:"article_meta,omitempty"`
+	ArticleContent    *WikiArticleContent `json:"article_content,omitempty"`
+
+	HighlightFindings []string `json:"highlight_findings"`
+	Source            string   `json:"source"`
+	TookMs            int64    `json:"tookMs"`
+	Note              string   `json:"note,omitempty"`
 }
 
 func WikipediaSearch(ctx context.Context, input map[string]any) (*WikipediaSearchOutput, error) {
@@ -279,8 +295,85 @@ func WikipediaSearch(ctx context.Context, input map[string]any) (*WikipediaSearc
 			break
 		}
 
+	case "article_content":
+		title, _ := input["title"].(string)
+		title = strings.TrimSpace(title)
+		if title == "" {
+			return nil, fmt.Errorf("input.title required for article_content mode")
+		}
+		out.Query = title
+		startOffset := 0
+		if v, ok := input["start_offset"].(float64); ok && v > 0 {
+			startOffset = int(v)
+		}
+		maxChars := 12000
+		if v, ok := input["max_chars"].(float64); ok && v > 0 {
+			maxChars = int(v)
+		}
+		if maxChars > 30000 {
+			maxChars = 30000
+		}
+		if maxChars < 1000 {
+			maxChars = 1000
+		}
+		params := url.Values{}
+		params.Set("action", "query")
+		params.Set("prop", "extracts")
+		params.Set("explaintext", "true")
+		params.Set("exsectionformat", "plain")
+		params.Set("titles", title)
+		params.Set("format", "json")
+		urlStr := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?%s", lang, params.Encode())
+		body, err := wikiGet(ctx, cli, urlStr)
+		if err != nil {
+			return nil, err
+		}
+		var raw struct {
+			Query struct {
+				Pages map[string]struct {
+					Title   string `json:"title"`
+					Extract string `json:"extract"`
+					Missing *string `json:"missing,omitempty"`
+				} `json:"pages"`
+			} `json:"query"`
+		}
+		if err := json.Unmarshal(body, &raw); err != nil {
+			return nil, fmt.Errorf("wiki content decode: %w", err)
+		}
+		for _, p := range raw.Query.Pages {
+			if p.Missing != nil {
+				return nil, fmt.Errorf("wikipedia: page not found: %s", title)
+			}
+			full := p.Extract
+			total := len(full)
+			if startOffset > total {
+				startOffset = total
+			}
+			end := startOffset + maxChars
+			if end > total {
+				end = total
+			}
+			chunk := full[startOffset:end]
+			titleEnc := strings.ReplaceAll(p.Title, " ", "_")
+			ac := &WikiArticleContent{
+				Title:       p.Title,
+				TotalChars:  total,
+				StartOffset: startOffset,
+				EndOffset:   end,
+				Content:     chunk,
+				URL:         fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, url.PathEscape(titleEnc)),
+			}
+			if end < total {
+				next := end
+				ac.NextOffset = &next
+			}
+			out.ArticleContent = ac
+			out.Returned = 1
+			break
+		}
+
 	default:
-		return nil, fmt.Errorf("unknown mode '%s' — use one of: summary, search, article_meta", mode)
+		return nil, fmt.Errorf("unknown mode '%s' — use one of: summary, search, article_meta, article_content", mode)
 	}
 
 	out.HighlightFindings = buildWikiArticleHighlights(out)
@@ -378,6 +471,20 @@ func buildWikiArticleHighlights(o *WikipediaSearchOutput) []string {
 				}
 				hi = append(hi, fmt.Sprintf("    [%s] %s", ts, r.User))
 			}
+		}
+
+	case "article_content":
+		if o.ArticleContent == nil {
+			hi = append(hi, "✗ no article content")
+			break
+		}
+		ac := o.ArticleContent
+		hi = append(hi, fmt.Sprintf("✓ %s — %d total chars, returning [%d:%d]", ac.Title, ac.TotalChars, ac.StartOffset, ac.EndOffset))
+		if ac.NextOffset != nil {
+			hi = append(hi, fmt.Sprintf("  more available — call again with start_offset=%d", *ac.NextOffset))
+		}
+		if ac.Content != "" {
+			hi = append(hi, "  preview: "+hfTruncate(ac.Content, 200))
 		}
 	}
 	return hi
