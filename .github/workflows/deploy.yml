@@ -5,26 +5,40 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Forks (and the canonical repo before the FLY_API_TOKEN secret is configured)
+# don't have a Fly token. Each step soft-skips with `exit 0` when the token is
+# missing so this workflow goes green for community forks and only actually
+# deploys when the operator has populated the secret.
 jobs:
   deploy-go-worker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
-        working-directory: apps/go-worker
+      - working-directory: apps/go-worker
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "FLY_API_TOKEN not set — skipping deploy (set the secret in repo settings to enable)."
+            exit 0
+          fi
+          flyctl deploy --remote-only
 
   deploy-py-worker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
-        working-directory: apps/py-worker
+      - working-directory: apps/py-worker
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "FLY_API_TOKEN not set — skipping deploy (set the secret in repo settings to enable)."
+            exit 0
+          fi
+          flyctl deploy --remote-only
 
   deploy-api:
     runs-on: ubuntu-latest
@@ -36,6 +50,11 @@ jobs:
       # from repo root with --config pointing at the app's fly.toml (build
       # context defaults to the directory containing the config file unless
       # --build-context overrides it).
-      - run: flyctl deploy --remote-only --config apps/api/fly.toml --build-context .
-        env:
+      - env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "FLY_API_TOKEN not set — skipping deploy (set the secret in repo settings to enable)."
+            exit 0
+          fi
+          flyctl deploy --remote-only --config apps/api/fly.toml --build-context .

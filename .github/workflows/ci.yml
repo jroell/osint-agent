@@ -117,6 +117,12 @@ jobs:
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
+      # pycairo (transitive dep: maigret → xhtml2pdf → svglib → rlpycairo → pycairo)
+      # needs cairo system libs at build time. Without these, `uv sync` fails with
+      # "Dependency 'cairo' not found (tried pkg-config and cmake)".
+      - name: Install cairo system libs
+        if: steps.skip.outputs.exists == 'true'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libcairo2-dev pkg-config
       - working-directory: apps/py-worker
         if: steps.skip.outputs.exists == 'true'
         run: uv sync --all-extras
