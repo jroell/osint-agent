@@ -328,6 +328,8 @@ import "./pubchem-compound-lookup";
 import "./wikipedia-search";
 // CoinGecko — crypto market data + coin detail + top markets (free, no-auth)
 import "./coingecko-search";
+// REST Countries — international country reference, 250+ countries (free, no-auth)
+import "./rest-countries-lookup";
 // GraphQL clairvoyance — bypass disabled introspection via field-suggestion error abuse
 import "./graphql-clairvoyance";
 // THE MOAT — persist + query API-discovery findings across sessions

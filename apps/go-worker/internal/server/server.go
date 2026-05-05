@@ -439,6 +439,8 @@ func handleTool(c echo.Context) error {
 		out, err = tools.WikipediaSearch(c.Request().Context(), req.Input)
 	case "coingecko_search":
 		out, err = tools.CoinGeckoSearch(c.Request().Context(), req.Input)
+	case "rest_countries_lookup":
+		out, err = tools.RestCountriesLookup(c.Request().Context(), req.Input)
 	default:
 		return c.JSON(http.StatusOK, ToolResponse{
 			RequestID: req.RequestID,
