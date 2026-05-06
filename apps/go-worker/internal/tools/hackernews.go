@@ -112,8 +112,11 @@ func fetchHNItem(ctx context.Context, id int) HNItem {
 	return it
 }
 
+// stripHTML strips tags AND decodes HTML character references
+// (&amp;, &#39;, &nbsp;, etc.) — the latter was missing pre-fix and
+// silently corrupted Google snippets, HN comments, and Mastodon
+// status notes downstream. See TestStripHTMLVariants_EntityDecoding.
 func stripHTML(s string, max int) string {
-	// Very minimal — just strip tags. HN's "about" uses <p>/<a>/<i>/<b>.
 	out := make([]rune, 0, len(s))
 	inTag := false
 	for _, r := range s {
@@ -129,7 +132,9 @@ func stripHTML(s string, max int) string {
 			out = append(out, r)
 		}
 	}
-	s = strings.TrimSpace(string(out))
+	s = htmlPkgUnescape(string(out))
+	s = normalizeHTMLWhitespace(s)
+	s = strings.TrimSpace(s)
 	if len(s) > max {
 		return s[:max] + "…"
 	}

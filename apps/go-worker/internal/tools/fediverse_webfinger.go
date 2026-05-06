@@ -21,38 +21,38 @@ type WebFingerLink struct {
 
 // FediverseProfile is the resolved identity.
 type FediverseProfile struct {
-	Handle           string   `json:"handle"`              // @user@instance
-	Username         string   `json:"username"`
-	Instance         string   `json:"instance"`
-	ProfileURL       string   `json:"profile_url,omitempty"`
-	ActorURL         string   `json:"actor_url,omitempty"` // ActivityPub actor URL
-	DisplayName      string   `json:"display_name,omitempty"`
-	BioPlain         string   `json:"bio_plain,omitempty"` // HTML-stripped
-	BioHTML          string   `json:"bio_html,omitempty"`
-	AvatarURL        string   `json:"avatar_url,omitempty"`
-	HeaderURL        string   `json:"header_url,omitempty"`
-	Published        string   `json:"published,omitempty"` // account creation
-	FollowersCount   int      `json:"followers_count,omitempty"`
-	FollowingCount   int      `json:"following_count,omitempty"`
-	StatusesCount    int      `json:"statuses_count,omitempty"`
-	Locked           bool     `json:"manually_approves_followers,omitempty"`
-	Discoverable     bool     `json:"discoverable,omitempty"`
-	URLs             []string `json:"declared_urls,omitempty"` // Profile-card URLs
-	InboxURL         string   `json:"inbox_url,omitempty"`
-	OutboxURL        string   `json:"outbox_url,omitempty"`
-	PublicKeyPEM     string   `json:"public_key_pem,omitempty"`
+	Handle         string   `json:"handle"` // @user@instance
+	Username       string   `json:"username"`
+	Instance       string   `json:"instance"`
+	ProfileURL     string   `json:"profile_url,omitempty"`
+	ActorURL       string   `json:"actor_url,omitempty"` // ActivityPub actor URL
+	DisplayName    string   `json:"display_name,omitempty"`
+	BioPlain       string   `json:"bio_plain,omitempty"` // HTML-stripped
+	BioHTML        string   `json:"bio_html,omitempty"`
+	AvatarURL      string   `json:"avatar_url,omitempty"`
+	HeaderURL      string   `json:"header_url,omitempty"`
+	Published      string   `json:"published,omitempty"` // account creation
+	FollowersCount int      `json:"followers_count,omitempty"`
+	FollowingCount int      `json:"following_count,omitempty"`
+	StatusesCount  int      `json:"statuses_count,omitempty"`
+	Locked         bool     `json:"manually_approves_followers,omitempty"`
+	Discoverable   bool     `json:"discoverable,omitempty"`
+	URLs           []string `json:"declared_urls,omitempty"` // Profile-card URLs
+	InboxURL       string   `json:"inbox_url,omitempty"`
+	OutboxURL      string   `json:"outbox_url,omitempty"`
+	PublicKeyPEM   string   `json:"public_key_pem,omitempty"`
 }
 
 // FediverseInstance is detected server software.
 type FediverseInstance struct {
-	Hostname        string `json:"hostname"`
-	Software        string `json:"software,omitempty"`
-	Version         string `json:"version,omitempty"`
-	OpenRegs        bool   `json:"open_registrations,omitempty"`
-	TotalUsers      int    `json:"total_users,omitempty"`
-	ActiveMonth     int    `json:"active_month,omitempty"`
-	ActiveHalfyear  int    `json:"active_halfyear,omitempty"`
-	NodeInfoURL     string `json:"nodeinfo_url,omitempty"`
+	Hostname       string `json:"hostname"`
+	Software       string `json:"software,omitempty"`
+	Version        string `json:"version,omitempty"`
+	OpenRegs       bool   `json:"open_registrations,omitempty"`
+	TotalUsers     int    `json:"total_users,omitempty"`
+	ActiveMonth    int    `json:"active_month,omitempty"`
+	ActiveHalfyear int    `json:"active_halfyear,omitempty"`
+	NodeInfoURL    string `json:"nodeinfo_url,omitempty"`
 }
 
 // FediverseOutput is the response.
@@ -74,22 +74,22 @@ type wfRaw struct {
 }
 
 type apActorRaw struct {
-	Type                       string `json:"type"`
-	ID                         string `json:"id"`
-	PreferredUsername          string `json:"preferredUsername"`
-	Name                       string `json:"name"`
-	URL                        any    `json:"url"` // can be string or array of Link objects (PeerTube)
-	Summary                    string `json:"summary"`
-	Inbox                      string `json:"inbox"`
-	Outbox                     string `json:"outbox"`
-	Followers                  string `json:"followers"`
-	Following                  string `json:"following"`
-	Published                  string `json:"published"`
-	ManuallyApprovesFollowers  bool   `json:"manuallyApprovesFollowers"`
-	Discoverable               bool   `json:"discoverable"`
-	Icon                       any `json:"icon"`  // can be {url} or [{url}, ...]
-	Image                      any `json:"image"` // same — flexible
-	PublicKey struct {
+	Type                      string `json:"type"`
+	ID                        string `json:"id"`
+	PreferredUsername         string `json:"preferredUsername"`
+	Name                      string `json:"name"`
+	URL                       any    `json:"url"` // can be string or array of Link objects (PeerTube)
+	Summary                   string `json:"summary"`
+	Inbox                     string `json:"inbox"`
+	Outbox                    string `json:"outbox"`
+	Followers                 string `json:"followers"`
+	Following                 string `json:"following"`
+	Published                 string `json:"published"`
+	ManuallyApprovesFollowers bool   `json:"manuallyApprovesFollowers"`
+	Discoverable              bool   `json:"discoverable"`
+	Icon                      any    `json:"icon"`  // can be {url} or [{url}, ...]
+	Image                     any    `json:"image"` // same — flexible
+	PublicKey                 struct {
 		PEM string `json:"publicKeyPem"`
 	} `json:"publicKey"`
 	Attachment []struct {
@@ -116,7 +116,7 @@ type nodeinfoRaw struct {
 		Version string `json:"version"`
 	} `json:"software"`
 	OpenRegistrations bool `json:"openRegistrations"`
-	Usage struct {
+	Usage             struct {
 		Users struct {
 			Total          int `json:"total"`
 			ActiveMonth    int `json:"activeMonth"`
@@ -474,10 +474,14 @@ func extractActorURL(v any) string {
 	return ""
 }
 
-// stripHTMLFed is a 1-arg HTML stripper (the existing stripHTML in
-// hackernews.go has a different signature).
+// stripHTMLFed strips tags AND decodes HTML character references
+// (&amp;, &#39;, &nbsp;, etc.) — the latter was missing pre-fix and
+// silently corrupted Mastodon bio fields and account-property values.
+// See TestStripHTMLVariants_EntityDecoding.
 func stripHTMLFed(s string) string {
 	s = htmlStripRe.ReplaceAllString(s, " ")
+	s = htmlPkgUnescape(s)
+	s = normalizeHTMLWhitespace(s)
 	s = multiSpaceRe.ReplaceAllString(s, " ")
 	return strings.TrimSpace(s)
 }

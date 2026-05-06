@@ -170,11 +170,13 @@ func TestERMoatEnvelope_AllTools(t *testing.T) {
 	// flaky TLS — we just want to assert the envelope shape when they
 	// DO succeed.
 	tolerant := map[string]bool{
-		"worldcat_search":   true,
-		"hathitrust_search": true,
-		"npgallery_search":  true,
-		"adb_search":        true,
-		"eol_search":        true, // EOL occasionally returns 5xx
+		"worldcat_search":    true,
+		"hathitrust_search":  true,
+		"npgallery_search":   true,
+		"adb_search":         true,
+		"eol_search":         true, // EOL occasionally returns 5xx
+		"pokemon_tcg_lookup": true, // PokemonTCG API periodically times out
+		"wikitree_lookup":    true, // WikiTree IP-throttles with 403
 	}
 
 	for _, tc := range calls {

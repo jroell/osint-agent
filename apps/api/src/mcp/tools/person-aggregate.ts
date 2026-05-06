@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { toolRegistry } from "./instance";
 import type { AuthContext } from "../../auth/middleware";
+import { dedupEmails, dedupIdentities } from "./aggregate-dedup";
+import { scoreIdentities, tierHistogram } from "./identity-confidence";
 
 const input = z.object({
   name: z.string().optional().describe("Person's display name (used by stackexchange, mastodon, opensanctions)"),
@@ -183,7 +185,33 @@ toolRegistry.register({
         case "github_commit_emails":
           for (const hit of (o.emails || [])) {
             emails.push({ email: hit.email, source_tool: r.tool,
-              evidence: { commits: hit.commit_count, repos: hit.repos_seen, names: hit.names_seen, noreply: hit.github_noreply } });
+              evidence: {
+                commits: hit.commit_count,
+                repos: hit.repos_seen,
+                names: hit.names_seen,
+                noreply: hit.github_noreply,
+                extracted_github_login: hit.extracted_github_login,
+                extracted_github_user_id: hit.extracted_github_user_id,
+                login_matches_input: hit.login_matches_input,
+              },
+            });
+            // Pivot every leaked noreply login into a github identity.
+            // This is the highest-leverage chain-pivot in the catalog:
+            // a single email harvest yields N additional graph nodes
+            // each feedable into sherlock / RapidAPI follower lookups.
+            if (hit.extracted_github_login && !hit.login_matches_input) {
+              identities.push({
+                platform: "github",
+                handle: hit.extracted_github_login,
+                url: `https://github.com/${hit.extracted_github_login}`,
+                source_tool: `${r.tool}:noreply_extract`,
+                evidence: {
+                  github_user_id: hit.extracted_github_user_id,
+                  derived_from_email: hit.email,
+                  reason: "users.noreply.github.com login leak — rename/collaborator signal",
+                },
+              });
+            }
           }
           break;
         case "stackexchange_user":
@@ -322,15 +350,27 @@ toolRegistry.register({
       .filter(r => !r.error && r.tool === "diffbot_kg_query" && (r.output as any)?.graph)
       .map(r => (r.output as any).graph);
 
+    // Canonical-key dedup pass — collapses every surface form of the
+    // same mailbox / social identity into one row with merged evidence
+    // and a source_count. Keeps raw arrays as `*_raw` for transparency.
+    const emailDedup = dedupEmails(emails);
+    const identityDedup = dedupIdentities(identities);
+    const scoredIdentities = scoreIdentities(identityDedup.deduped);
+
     return {
       inputs: { name, email, username, domain, include_heuristic },
       tools_called: dedupedPlan.length,
       tools_succeeded: results.filter(r => !r.error).length,
       tools_errored: results.filter(r => r.error).length,
-      identities_found: identities.length,
-      identities,
-      emails_discovered: emails.length,
-      emails,
+      identities_found: scoredIdentities.length,
+      identities: scoredIdentities,
+      identity_confidence_tiers: tierHistogram(scoredIdentities),
+      identities_raw_count: identities.length,
+      identities_unkeyed: identityDedup.unkeyed,
+      emails_discovered: emailDedup.deduped.length,
+      emails: emailDedup.deduped,
+      emails_raw_count: emails.length,
+      emails_unparsable: emailDedup.unparsable,
       cross_platform_handles: crossPlatform,
       synthesis: syntheses,
       knowledge_graph: {

@@ -606,7 +606,90 @@ func tmdbBuildEntities(o *TMDBLookupOutput) []TMDBEntity {
 			Attributes: map[string]any{"role": "crew", "job": c.Job, "department": c.Department},
 		})
 	}
-	return ents
+	// Dedup: when the same person appears in both Cast and Crew (e.g. an
+	// actor-director on the same title), merge into a single entity so
+	// downstream ER doesn't see two distinct people. See
+	// TestDedupeTMDBEntities_QuantitativeImprovement.
+	return dedupeTMDBEntitiesByKindID(ents)
+}
+
+// dedupeTMDBEntitiesByKindID collapses entries with the same
+// (Kind, TMDBID|IMDbID) key. When duplicates collide, attributes are
+// merged: scalar conflicts become a slice of distinct values (so a
+// single merged person carries both role="cast" + role="crew"), and
+// missing fields are filled in from the duplicate.
+//
+// Entities with no usable identifier (Kind=="" OR both TMDBID==0 AND
+// IMDbID=="") are passed through unchanged — never deduped — so we
+// don't accidentally collapse entities that just happen to lack IDs.
+func dedupeTMDBEntitiesByKindID(ents []TMDBEntity) []TMDBEntity {
+	seen := map[string]int{}
+	out := make([]TMDBEntity, 0, len(ents))
+	for _, e := range ents {
+		if e.Kind == "" || (e.TMDBID == 0 && e.IMDbID == "") {
+			out = append(out, e)
+			continue
+		}
+		key := fmt.Sprintf("%s:%d:%s", e.Kind, e.TMDBID, e.IMDbID)
+		if idx, ok := seen[key]; ok {
+			out[idx] = mergeTMDBEntity(out[idx], e)
+			continue
+		}
+		seen[key] = len(out)
+		out = append(out, e)
+	}
+	return out
+}
+
+func mergeTMDBEntity(a, b TMDBEntity) TMDBEntity {
+	if a.Title == "" {
+		a.Title = b.Title
+	}
+	if a.Name == "" {
+		a.Name = b.Name
+	}
+	if a.IMDbID == "" {
+		a.IMDbID = b.IMDbID
+	}
+	if a.Date == "" {
+		a.Date = b.Date
+	}
+	if a.Description == "" {
+		a.Description = b.Description
+	}
+	if a.Attributes == nil {
+		a.Attributes = map[string]any{}
+	}
+	for k, v := range b.Attributes {
+		existing, ok := a.Attributes[k]
+		if !ok {
+			a.Attributes[k] = v
+			continue
+		}
+		if attrEqual(existing, v) {
+			continue
+		}
+		// scalar conflict → coerce to slice of distinct values
+		if existingSlice, ok := existing.([]any); ok {
+			present := false
+			for _, x := range existingSlice {
+				if attrEqual(x, v) {
+					present = true
+					break
+				}
+			}
+			if !present {
+				a.Attributes[k] = append(existingSlice, v)
+			}
+		} else {
+			a.Attributes[k] = []any{existing, v}
+		}
+	}
+	return a
+}
+
+func attrEqual(a, b any) bool {
+	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
 }
 
 func tmdbBuildHighlights(o *TMDBLookupOutput) []string {

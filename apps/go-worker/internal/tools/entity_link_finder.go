@@ -370,15 +370,88 @@ func diffbotResolveEntity(ctx context.Context, apiKey, name, typeHint string) (L
 	return ent, r, nil
 }
 
-// linkMatch — two entities are "the same" if their IDs match OR their names match (case-insensitive).
+// linkMatch — two entities are "the same" if their IDs match (after
+// stripping common KG URI prefixes) OR their names match (after
+// case-fold + accent-fold + corp-suffix strip + punctuation strip).
+//
+// Real Diffbot KG, Wikidata, and other graph upstreams emit IDs in
+// several shapes for the same entity:
+//
+//	"http://diffbot.com/entity/ETh7Rhq3HP0OqdxAHvX0V2Q"
+//	"https://diffbot.com/entity/ETh7Rhq3HP0OqdxAHvX0V2Q"
+//	"ETh7Rhq3HP0OqdxAHvX0V2Q"
+//	"diffbot.com/entity/ETh7Rhq3HP0OqdxAHvX0V2Q"
+//
+// And names with corporate suffixes are nearly always inconsistent
+// across data sources: "Vurvey Labs, Inc." vs "Vurvey Labs" vs
+// "VURVEY". The pre-fix linkMatch produced false negatives on every
+// shape mismatch, silently dropping real connections from the
+// connecting-the-dots engine. See
+// TestLinkMatch_IDAndOrgFormVariantsQuantitative.
 func linkMatch(idA, nameA, idB, nameB string) bool {
-	if idA != "" && idA == idB {
-		return true
+	if idA != "" && idB != "" {
+		if normalizeIDForMatch(idA) == normalizeIDForMatch(idB) {
+			return true
+		}
 	}
 	if nameA == "" || nameB == "" {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSpace(nameA), strings.TrimSpace(nameB))
+	return normalizeOrgNameForMatch(nameA) == normalizeOrgNameForMatch(nameB)
+}
+
+// normalizeIDForMatch strips common KG-URI prefixes and the trailing
+// "/entity/<id>" or "/Q<id>" path so that bare IDs compare equal to
+// their fully-qualified forms.
+func normalizeIDForMatch(id string) string {
+	id = strings.TrimSpace(id)
+	id = strings.TrimPrefix(id, "http://")
+	id = strings.TrimPrefix(id, "https://")
+	// If the URI contains "/entity/" (Diffbot, Wikidata, etc.),
+	// keep only the segment after it.
+	if i := strings.LastIndex(id, "/entity/"); i >= 0 {
+		id = id[i+len("/entity/"):]
+	} else if i := strings.LastIndex(id, "/"); i >= 0 {
+		// Generic last-segment fallback for other URI patterns.
+		id = id[i+1:]
+	}
+	return strings.ToLower(id)
+}
+
+// normalizeOrgNameForMatch produces a canonical form for org-name
+// comparison: lowercase + accent-fold + strip corp suffixes + strip
+// punctuation + collapse whitespace.
+func normalizeOrgNameForMatch(name string) string {
+	// Reuse the Unicode-aware folder from entity_match.go.
+	n := normalizeForMatch(name)
+	// Strip common corp-suffix tokens at end of string. Iterate so
+	// "Vurvey Labs Inc Co" gets both stripped.
+	suffixes := []string{
+		" inc", " incorporated",
+		" llc", " l l c",
+		" ltd", " limited",
+		" corp", " corporation",
+		" co", " company",
+		" pbc", // public benefit corporation (Anthropic, Patagonia, etc.)
+		" gmbh", " ag", " sa", " spa", " srl",
+		" plc", " bv", " nv",
+		" sas", " sarl",
+		" labs",
+		" the",
+	}
+	changed := true
+	for changed {
+		changed = false
+		for _, s := range suffixes {
+			if strings.HasSuffix(n, s) {
+				n = strings.TrimSpace(n[:len(n)-len(s)])
+				changed = true
+			}
+		}
+	}
+	// Collapse runs of whitespace to single spaces.
+	n = strings.Join(strings.Fields(n), " ")
+	return n
 }
 
 func bestName(a, b string) string {
@@ -389,25 +462,71 @@ func bestName(a, b string) string {
 }
 
 func confidenceFromOverlap(periodA, periodB string) string {
-	// If both periods are present and overlap (or both isCurrent), confidence high.
-	// Otherwise medium (they worked there, but possibly not at the same time).
-	if (strings.Contains(periodA, "current") && strings.Contains(periodB, "current")) ||
-		(periodA != "" && periodB != "" && timeRangesOverlap(periodA, periodB)) {
+	// timeRangesOverlap now handles open-ended periods correctly, so we
+	// can drop the redundant "both contain 'current'" short-circuit.
+	if periodA != "" && periodB != "" && timeRangesOverlap(periodA, periodB) {
 		return "high"
 	}
 	return "medium"
 }
 
-// timeRangesOverlap — extremely lenient overlap check (just looks for shared year).
+// timeRangesOverlap returns true if the two period strings have any
+// year in common, with proper handling of OPEN-ENDED periods (those
+// containing "current" / "present" / "ongoing" / "now" / "today").
+//
+// Before the iter-11 fix, an open-ended period collapsed to a single-
+// year range (the start year), so "2018-current" vs "2025-current"
+// returned false even though both clearly overlap. See
+// TestTimeRangesOverlap_OpenEndedPeriodsQuantitative.
 func timeRangesOverlap(a, b string) bool {
 	yearsA := extractYears(a)
 	yearsB := extractYears(b)
-	if len(yearsA) == 0 || len(yearsB) == 0 {
+	openA := isOpenEndedPeriod(a)
+	openB := isOpenEndedPeriod(b)
+
+	// Both open-ended with no extracted years: assume current and overlap.
+	if openA && openB && len(yearsA) == 0 && len(yearsB) == 0 {
+		return true
+	}
+	if len(yearsA) == 0 && !openA {
 		return false
 	}
-	aStart, aEnd := yearRange(yearsA)
-	bStart, bEnd := yearRange(yearsB)
+	if len(yearsB) == 0 && !openB {
+		return false
+	}
+
+	const openEnd = 9999
+	var aStart, aEnd, bStart, bEnd int
+	if len(yearsA) > 0 {
+		aStart, aEnd = yearRange(yearsA)
+	} else {
+		// open-ended with no years → treat as the full timeline
+		aStart, aEnd = 0, openEnd
+	}
+	if len(yearsB) > 0 {
+		bStart, bEnd = yearRange(yearsB)
+	} else {
+		bStart, bEnd = 0, openEnd
+	}
+	if openA {
+		aEnd = openEnd
+	}
+	if openB {
+		bEnd = openEnd
+	}
 	return aStart <= bEnd && bStart <= aEnd
+}
+
+// isOpenEndedPeriod returns true if the period string indicates an
+// ongoing engagement (no closed end-date).
+func isOpenEndedPeriod(s string) bool {
+	low := strings.ToLower(s)
+	for _, marker := range []string{"current", "present", "ongoing", "today", "now"} {
+		if strings.Contains(low, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func extractYears(s string) []int {

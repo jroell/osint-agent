@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -39,42 +40,42 @@ import (
 //                              giving as required under HLOGA 2007)
 
 type LDALobbyist struct {
-	Name             string `json:"name"`
-	CoveredPosition  string `json:"covered_position,omitempty"`
+	Name            string `json:"name"`
+	CoveredPosition string `json:"covered_position,omitempty"`
 }
 
 type LDAActivity struct {
-	GeneralIssueCode  string         `json:"general_issue_code,omitempty"`
-	IssueArea         string         `json:"issue_area,omitempty"`
-	Description       string         `json:"description,omitempty"`
+	GeneralIssueCode   string        `json:"general_issue_code,omitempty"`
+	IssueArea          string        `json:"issue_area,omitempty"`
+	Description        string        `json:"description,omitempty"`
 	GovernmentEntities []string      `json:"government_entities,omitempty"`
-	Lobbyists         []LDALobbyist  `json:"lobbyists,omitempty"`
+	Lobbyists          []LDALobbyist `json:"lobbyists,omitempty"`
 }
 
 type LDAFiling struct {
-	FilingUUID         string        `json:"filing_uuid"`
-	URL                string        `json:"url,omitempty"`
-	FilingYear         int           `json:"filing_year"`
-	FilingPeriod       string        `json:"filing_period,omitempty"`
-	FilingType         string        `json:"filing_type,omitempty"`
-	FilingTypeDisplay  string        `json:"filing_type_display,omitempty"`
-	RegistrantName     string        `json:"registrant_name,omitempty"`
-	RegistrantID       int           `json:"registrant_id,omitempty"`
-	RegistrantCountry  string        `json:"registrant_country,omitempty"`
-	RegistrantCity     string        `json:"registrant_city,omitempty"`
-	RegistrantState    string        `json:"registrant_state,omitempty"`
-	ClientName         string        `json:"client_name,omitempty"`
-	ClientID           int           `json:"client_id,omitempty"`
-	Income             string        `json:"income,omitempty"`
-	Expenses           string        `json:"expenses,omitempty"`
-	PostedBy           string        `json:"posted_by,omitempty"`
-	PostedAt           string        `json:"posted_at,omitempty"`
-	TerminationDate    string        `json:"termination_date,omitempty"`
-	FilingDocumentURL  string        `json:"filing_document_url,omitempty"`
-	Activities         []LDAActivity `json:"activities,omitempty"`
-	ForeignEntities    []string      `json:"foreign_entities,omitempty"`
-	AffiliatedOrgs     []string      `json:"affiliated_organizations,omitempty"`
-	ConvictionFlag     bool          `json:"conviction_disclosed,omitempty"`
+	FilingUUID        string        `json:"filing_uuid"`
+	URL               string        `json:"url,omitempty"`
+	FilingYear        int           `json:"filing_year"`
+	FilingPeriod      string        `json:"filing_period,omitempty"`
+	FilingType        string        `json:"filing_type,omitempty"`
+	FilingTypeDisplay string        `json:"filing_type_display,omitempty"`
+	RegistrantName    string        `json:"registrant_name,omitempty"`
+	RegistrantID      int           `json:"registrant_id,omitempty"`
+	RegistrantCountry string        `json:"registrant_country,omitempty"`
+	RegistrantCity    string        `json:"registrant_city,omitempty"`
+	RegistrantState   string        `json:"registrant_state,omitempty"`
+	ClientName        string        `json:"client_name,omitempty"`
+	ClientID          int           `json:"client_id,omitempty"`
+	Income            string        `json:"income,omitempty"`
+	Expenses          string        `json:"expenses,omitempty"`
+	PostedBy          string        `json:"posted_by,omitempty"`
+	PostedAt          string        `json:"posted_at,omitempty"`
+	TerminationDate   string        `json:"termination_date,omitempty"`
+	FilingDocumentURL string        `json:"filing_document_url,omitempty"`
+	Activities        []LDAActivity `json:"activities,omitempty"`
+	ForeignEntities   []string      `json:"foreign_entities,omitempty"`
+	AffiliatedOrgs    []string      `json:"affiliated_organizations,omitempty"`
+	ConvictionFlag    bool          `json:"conviction_disclosed,omitempty"`
 }
 
 type LDAContribution struct {
@@ -87,24 +88,24 @@ type LDAContribution struct {
 }
 
 type LDALobbyingSearchOutput struct {
-	Mode              string            `json:"mode"`
-	Query             string            `json:"query,omitempty"`
-	TotalCount        int               `json:"total_count,omitempty"`
-	Returned          int               `json:"returned"`
-	Filings           []LDAFiling       `json:"filings,omitempty"`
-	Filing            *LDAFiling        `json:"filing,omitempty"`
-	Contributions     []LDAContribution `json:"contributions,omitempty"`
+	Mode          string            `json:"mode"`
+	Query         string            `json:"query,omitempty"`
+	TotalCount    int               `json:"total_count,omitempty"`
+	Returned      int               `json:"returned"`
+	Filings       []LDAFiling       `json:"filings,omitempty"`
+	Filing        *LDAFiling        `json:"filing,omitempty"`
+	Contributions []LDAContribution `json:"contributions,omitempty"`
 
 	// Aggregations
-	UniqueLobbyists   []string          `json:"unique_lobbyists,omitempty"`
-	UniqueIssueCodes  []string          `json:"unique_issue_codes,omitempty"`
-	UniqueGovEntities []string          `json:"unique_gov_entities,omitempty"`
-	TotalSpend        float64           `json:"total_spend_usd,omitempty"`
+	UniqueLobbyists   []string `json:"unique_lobbyists,omitempty"`
+	UniqueIssueCodes  []string `json:"unique_issue_codes,omitempty"`
+	UniqueGovEntities []string `json:"unique_gov_entities,omitempty"`
+	TotalSpend        float64  `json:"total_spend_usd,omitempty"`
 
-	HighlightFindings []string          `json:"highlight_findings"`
-	Source            string            `json:"source"`
-	TookMs            int64             `json:"tookMs"`
-	Note              string            `json:"note,omitempty"`
+	HighlightFindings []string `json:"highlight_findings"`
+	Source            string   `json:"source"`
+	TookMs            int64    `json:"tookMs"`
+	Note              string   `json:"note,omitempty"`
 }
 
 func LDALobbyingSearch(ctx context.Context, input map[string]any) (*LDALobbyingSearchOutput, error) {
@@ -438,16 +439,70 @@ func convertLDAFiling(r map[string]any) LDAFiling {
 	return f
 }
 
+// gtFloat extracts a number from m[key] across the wide range of value
+// shapes that real upstream APIs serve.
+//
+// Handled types:
+//   - float64, float32
+//   - int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64
+//   - json.Number (when a decoder uses UseNumber())
+//   - bool (true → 1.0, false → 0.0)
+//   - string via strconv.ParseFloat — strips commas (so "1,234.56" → 1234.56)
+//     and surrounding whitespace; rejects partial parses (so "42abc" → 0,
+//     not 42, which is the safe behavior for downstream comparisons)
+//
+// The empty-key and unknown-type cases return 0. See
+// TestGtFloat_BroadTypeCoverageQuantitative for the proof.
 func gtFloat(m map[string]any, key string) float64 {
-	if v, ok := m[key]; ok {
-		switch x := v.(type) {
-		case float64:
-			return x
-		case string:
-			var f float64
-			if _, err := fmt.Sscanf(x, "%f", &f); err == nil {
-				return f
-			}
+	v, ok := m[key]
+	if !ok || v == nil {
+		return 0
+	}
+	switch x := v.(type) {
+	case float64:
+		return x
+	case float32:
+		return float64(x)
+	case int:
+		return float64(x)
+	case int8:
+		return float64(x)
+	case int16:
+		return float64(x)
+	case int32:
+		return float64(x)
+	case int64:
+		return float64(x)
+	case uint:
+		return float64(x)
+	case uint8:
+		return float64(x)
+	case uint16:
+		return float64(x)
+	case uint32:
+		return float64(x)
+	case uint64:
+		return float64(x)
+	case json.Number:
+		if f, err := x.Float64(); err == nil {
+			return f
+		}
+	case bool:
+		if x {
+			return 1
+		}
+		return 0
+	case string:
+		s := strings.TrimSpace(x)
+		if s == "" {
+			return 0
+		}
+		// Strip thousands separators that real APIs commonly emit.
+		s = strings.ReplaceAll(s, ",", "")
+		// Strip a single trailing % so "42%" → 42.
+		s = strings.TrimSuffix(s, "%")
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return f
 		}
 	}
 	return 0

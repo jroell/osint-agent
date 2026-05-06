@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -30,23 +31,23 @@ import (
 // Free, no auth.
 
 type GTBill struct {
-	ID                 int    `json:"id,omitempty"`
-	Title              string `json:"title"`
-	TitleNoNumber      string `json:"title_without_number,omitempty"`
-	BillType           string `json:"bill_type,omitempty"`
-	BillTypeLabel      string `json:"bill_type_label,omitempty"`
-	Congress           int    `json:"congress,omitempty"`
-	Number             int    `json:"number,omitempty"`
-	DisplayNumber      string `json:"display_number,omitempty"`
-	CurrentStatus      string `json:"current_status,omitempty"`
-	CurrentStatusLabel string `json:"current_status_label,omitempty"`
-	CurrentStatusDate  string `json:"current_status_date,omitempty"`
-	IntroducedDate     string `json:"introduced_date,omitempty"`
-	Sponsor            string `json:"sponsor,omitempty"`
-	IsAlive            bool   `json:"is_alive,omitempty"`
-	Link               string `json:"link,omitempty"`
-	GPOPdfURL          string `json:"gpo_pdf_url,omitempty"`
-	NumPages           int    `json:"num_pages,omitempty"`
+	ID                 int      `json:"id,omitempty"`
+	Title              string   `json:"title"`
+	TitleNoNumber      string   `json:"title_without_number,omitempty"`
+	BillType           string   `json:"bill_type,omitempty"`
+	BillTypeLabel      string   `json:"bill_type_label,omitempty"`
+	Congress           int      `json:"congress,omitempty"`
+	Number             int      `json:"number,omitempty"`
+	DisplayNumber      string   `json:"display_number,omitempty"`
+	CurrentStatus      string   `json:"current_status,omitempty"`
+	CurrentStatusLabel string   `json:"current_status_label,omitempty"`
+	CurrentStatusDate  string   `json:"current_status_date,omitempty"`
+	IntroducedDate     string   `json:"introduced_date,omitempty"`
+	Sponsor            string   `json:"sponsor,omitempty"`
+	IsAlive            bool     `json:"is_alive,omitempty"`
+	Link               string   `json:"link,omitempty"`
+	GPOPdfURL          string   `json:"gpo_pdf_url,omitempty"`
+	NumPages           int      `json:"num_pages,omitempty"`
 	Citations          []string `json:"citations,omitempty"`
 }
 
@@ -76,18 +77,18 @@ type GTMember struct {
 }
 
 type GTVote struct {
-	Chamber       string  `json:"chamber"`
-	Congress      int     `json:"congress"`
-	Session       string  `json:"session"`
-	Number        int     `json:"number"`
-	Question      string  `json:"question"`
-	Result        string  `json:"result"`
-	TotalPlus     int     `json:"yes_count"`
-	TotalMinus    int     `json:"no_count"`
-	TotalOther    int     `json:"other_count,omitempty"`
-	Created       string  `json:"created"`
-	Link          string  `json:"link"`
-	RelatedBill   *GTBill `json:"related_bill,omitempty"`
+	Chamber     string  `json:"chamber"`
+	Congress    int     `json:"congress"`
+	Session     string  `json:"session"`
+	Number      int     `json:"number"`
+	Question    string  `json:"question"`
+	Result      string  `json:"result"`
+	TotalPlus   int     `json:"yes_count"`
+	TotalMinus  int     `json:"no_count"`
+	TotalOther  int     `json:"other_count,omitempty"`
+	Created     string  `json:"created"`
+	Link        string  `json:"link"`
+	RelatedBill *GTBill `json:"related_bill,omitempty"`
 }
 
 type GovTrackSearchOutput struct {
@@ -206,8 +207,10 @@ func GovTrackSearch(ctx context.Context, input map[string]any) (*GovTrackSearchO
 			return nil, err
 		}
 		var raw struct {
-			Meta    struct{ TotalCount int `json:"total_count"` } `json:"meta"`
-			Objects []map[string]any                              `json:"objects"`
+			Meta struct {
+				TotalCount int `json:"total_count"`
+			} `json:"meta"`
+			Objects []map[string]any `json:"objects"`
 		}
 		if err := json.Unmarshal(body, &raw); err != nil {
 			return nil, fmt.Errorf("votes decode: %w", err)
@@ -260,8 +263,10 @@ func GovTrackSearch(ctx context.Context, input map[string]any) (*GovTrackSearchO
 				return nil, err
 			}
 			var raw struct {
-				Meta    struct{ TotalCount int `json:"total_count"` } `json:"meta"`
-				Objects []map[string]any                              `json:"objects"`
+				Meta struct {
+					TotalCount int `json:"total_count"`
+				} `json:"meta"`
+				Objects []map[string]any `json:"objects"`
 			}
 			if err := json.Unmarshal(body, &raw); err != nil {
 				return nil, fmt.Errorf("person decode: %w", err)
@@ -277,8 +282,10 @@ func GovTrackSearch(ctx context.Context, input map[string]any) (*GovTrackSearchO
 				return nil, err
 			}
 			var raw struct {
-				Meta    struct{ TotalCount int `json:"total_count"` } `json:"meta"`
-				Objects []map[string]any                              `json:"objects"`
+				Meta struct {
+					TotalCount int `json:"total_count"`
+				} `json:"meta"`
+				Objects []map[string]any `json:"objects"`
 			}
 			if err := json.Unmarshal(body, &raw); err != nil {
 				return nil, fmt.Errorf("role decode: %w", err)
@@ -303,8 +310,10 @@ func GovTrackSearch(ctx context.Context, input map[string]any) (*GovTrackSearchO
 
 func decodeGTBillSearch(body []byte, out *GovTrackSearchOutput) error {
 	var raw struct {
-		Meta    struct{ TotalCount int `json:"total_count"` } `json:"meta"`
-		Objects []map[string]any                              `json:"objects"`
+		Meta struct {
+			TotalCount int `json:"total_count"`
+		} `json:"meta"`
+		Objects []map[string]any `json:"objects"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return fmt.Errorf("bill search decode: %w", err)
@@ -428,34 +437,167 @@ func convertGTVote(v map[string]any) GTVote {
 	return out
 }
 
+// gtString extracts a string from m[key] across the wide range of value
+// shapes that real upstream APIs serve. Mirrors the iter-4 gtFloat fix
+// for the symmetric defect on the string side.
+//
+// Handled shapes:
+//   - string (verbatim)
+//   - nil → ""
+//   - bool → "true" / "false"
+//   - all integer types → base-10 string (no scientific notation)
+//   - float64/float32 → trimmed numeric (so 123.0 → "123", 1.5 → "1.5",
+//     not "123.000000" or "1.500000")
+//   - json.Number → its String() form (preserves the upstream's
+//     original numeric textual representation)
+//
+// Maps and slices return "" (callers that need them should fetch the
+// raw value directly). See TestGtString_BroadTypeCoverageQuantitative
+// for the proof.
 func gtString(m map[string]any, key string) string {
-	if v, ok := m[key]; ok {
-		if s, ok := v.(string); ok {
-			return s
+	v, ok := m[key]
+	if !ok || v == nil {
+		return ""
+	}
+	switch x := v.(type) {
+	case string:
+		return x
+	case bool:
+		if x {
+			return "true"
 		}
-		if v == nil {
-			return ""
-		}
+		return "false"
+	case int:
+		return strconv.FormatInt(int64(x), 10)
+	case int8:
+		return strconv.FormatInt(int64(x), 10)
+	case int16:
+		return strconv.FormatInt(int64(x), 10)
+	case int32:
+		return strconv.FormatInt(int64(x), 10)
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case uint:
+		return strconv.FormatUint(uint64(x), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(x), 10)
+	case uint16:
+		return strconv.FormatUint(uint64(x), 10)
+	case uint32:
+		return strconv.FormatUint(uint64(x), 10)
+	case uint64:
+		return strconv.FormatUint(x, 10)
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(x), 'f', -1, 32)
+	case json.Number:
+		return x.String()
 	}
 	return ""
 }
 
+// gtInt extracts an integer from m[key] across the wide range of value
+// shapes that real upstream APIs serve. Mirrors the iter-4 gtFloat
+// and iter-8 gtString fixes.
+//
+// Float values are truncated toward zero (the standard Go int conversion).
+// String values are parsed via strconv.ParseInt with comma stripping and
+// trailing-percent stripping. bool true → 1, false → 0.
+//
+// See TestGtInt_BroadTypeCoverageQuantitative for the proof.
 func gtInt(m map[string]any, key string) int {
-	if v, ok := m[key]; ok {
-		switch x := v.(type) {
-		case float64:
-			return int(x)
-		case int:
-			return x
+	v, ok := m[key]
+	if !ok || v == nil {
+		return 0
+	}
+	switch x := v.(type) {
+	case float64:
+		return int(x)
+	case float32:
+		return int(x)
+	case int:
+		return x
+	case int8:
+		return int(x)
+	case int16:
+		return int(x)
+	case int32:
+		return int(x)
+	case int64:
+		return int(x)
+	case uint:
+		return int(x)
+	case uint8:
+		return int(x)
+	case uint16:
+		return int(x)
+	case uint32:
+		return int(x)
+	case uint64:
+		return int(x)
+	case json.Number:
+		if i, err := x.Int64(); err == nil {
+			return int(i)
+		}
+		if f, err := x.Float64(); err == nil {
+			return int(f)
+		}
+	case bool:
+		if x {
+			return 1
+		}
+		return 0
+	case string:
+		s := strings.TrimSpace(x)
+		if s == "" {
+			return 0
+		}
+		s = strings.ReplaceAll(s, ",", "")
+		s = strings.TrimSuffix(s, "%")
+		if i, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return int(i)
+		}
+		// Fall back to float (handles "42.5" → 42, "1.5e3" → 1500)
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return int(f)
 		}
 	}
 	return 0
 }
 
+// gtBool extracts a boolean from m[key] across shapes real upstreams
+// emit. The legacy version only handled native `bool`; APIs commonly
+// serve booleans as int 0/1 (RapidAPI, MarineTraffic) or strings
+// "true"/"false"/"yes"/"no"/"1"/"0" (form-encoded responses, CSV
+// imports). See TestGtBool_BroadTypeCoverageQuantitative.
 func gtBool(m map[string]any, key string) bool {
-	if v, ok := m[key]; ok {
-		if b, ok := v.(bool); ok {
-			return b
+	v, ok := m[key]
+	if !ok || v == nil {
+		return false
+	}
+	switch x := v.(type) {
+	case bool:
+		return x
+	case int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64:
+		// non-zero numbers are truthy
+		return gtInt(map[string]any{"v": v}, "v") != 0
+	case json.Number:
+		if i, err := x.Int64(); err == nil {
+			return i != 0
+		}
+		if f, err := x.Float64(); err == nil {
+			return f != 0
+		}
+	case string:
+		s := strings.ToLower(strings.TrimSpace(x))
+		switch s {
+		case "true", "yes", "y", "t", "1", "on":
+			return true
+		case "false", "no", "n", "f", "0", "off", "":
+			return false
 		}
 	}
 	return false

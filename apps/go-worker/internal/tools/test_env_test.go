@@ -35,6 +35,13 @@ func isTransientLiveNetworkError(err error) bool {
 		strings.Contains(msg, "http 502") ||
 		strings.Contains(msg, "http 503") ||
 		strings.Contains(msg, "http 504") ||
+		strings.Contains(msg, "(429)") ||
+		strings.Contains(msg, "(502)") ||
+		strings.Contains(msg, "(503)") ||
+		strings.Contains(msg, "(504)") ||
+		strings.Contains(msg, "rate limited") ||
+		strings.Contains(msg, "rate-limited") ||
+		strings.Contains(msg, "too many requests") ||
 		strings.Contains(msg, "bad gateway") ||
 		strings.Contains(msg, "service unavailable") ||
 		strings.Contains(msg, "gateway timeout")

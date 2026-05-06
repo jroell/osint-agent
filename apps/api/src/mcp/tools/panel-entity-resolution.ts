@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { toolRegistry } from "./instance";
-import { consultPanel, type PanelId } from "../../llm/panel";
+import { consultPanel, safeJSON, type PanelId } from "../../llm/panel";
 import { ER_PANEL_SYSTEM } from "../../llm/panel-aggregators";
 
 const findingSchema = z.object({
@@ -36,21 +36,11 @@ toolRegistry.register({
       mode: "synthesis",
     });
 
-    // Try to extract structured clusters from the consensus payload, falling back
-    // to passing through the raw consensus text if it isn't valid JSON.
-    let structured: unknown = null;
-    if (result.consensus) {
-      try {
-        let s = result.consensus.trim();
-        const fence = s.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-        if (fence) s = fence[1]!;
-        const obj = s.match(/\{[\s\S]*\}/);
-        if (obj) s = obj[0];
-        structured = JSON.parse(s);
-      } catch {
-        // leave structured null; the agent will see the raw consensus
-      }
-    }
+    // Try to extract structured clusters from the consensus payload using the
+    // shared safeJSON helper that also recovers token-truncated responses.
+    // The legacy inline parser missed truncated/repaired cases, dropping ~half
+    // of large clustering outputs. See test/safe-json-coverage.test.ts.
+    const structured: unknown = result.consensus ? safeJSON(result.consensus) : null;
 
     return {
       structured,

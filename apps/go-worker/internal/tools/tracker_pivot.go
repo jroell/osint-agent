@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	htmlpkg "html"
 	"io"
 	"net/http"
 	"net/url"
@@ -14,6 +15,10 @@ import (
 	"strings"
 	"time"
 )
+
+// htmlPkgUnescape is an alias for html.UnescapeString from the stdlib,
+// extracted so test fixtures can target the decoding step in isolation.
+var htmlPkgUnescape = htmlpkg.UnescapeString
 
 type TrackerPivotHit struct {
 	Domain    string `json:"domain"`
@@ -28,20 +33,20 @@ type TrackerPivotHit struct {
 }
 
 type TrackerPivotOutput struct {
-	TrackerID         string             `json:"tracker_id"`
-	Platform          string             `json:"platform"`
-	StrategyUsed      string             `json:"strategy_used"`
-	Query             string             `json:"query"`
-	TotalHits         int                `json:"total_hits"`
-	UniqueDomains     []string           `json:"unique_domains"`
-	UniqueIPs         []string           `json:"unique_ips,omitempty"`
-	UniqueASNs        []string           `json:"unique_asns,omitempty"`
-	HostingClusters   map[string][]string `json:"hosting_clusters,omitempty"`
-	Hits              []TrackerPivotHit  `json:"hits"`
-	Source            string             `json:"source"`
-	TookMs            int64              `json:"tookMs"`
-	Note              string             `json:"note,omitempty"`
-	VerifyHint        string             `json:"verify_hint,omitempty"`
+	TrackerID       string              `json:"tracker_id"`
+	Platform        string              `json:"platform"`
+	StrategyUsed    string              `json:"strategy_used"`
+	Query           string              `json:"query"`
+	TotalHits       int                 `json:"total_hits"`
+	UniqueDomains   []string            `json:"unique_domains"`
+	UniqueIPs       []string            `json:"unique_ips,omitempty"`
+	UniqueASNs      []string            `json:"unique_asns,omitempty"`
+	HostingClusters map[string][]string `json:"hosting_clusters,omitempty"`
+	Hits            []TrackerPivotHit   `json:"hits"`
+	Source          string              `json:"source"`
+	TookMs          int64               `json:"tookMs"`
+	Note            string              `json:"note,omitempty"`
+	VerifyHint      string              `json:"verify_hint,omitempty"`
 }
 
 // TrackerPivot searches for OTHER sites running the same tracker ID surfaced
@@ -78,7 +83,7 @@ func TrackerPivot(ctx context.Context, input map[string]any) (*TrackerPivotOutpu
 	start := time.Now()
 	out := &TrackerPivotOutput{
 		TrackerID: trackerID, Platform: platform,
-		Source: "tracker_pivot",
+		Source:     "tracker_pivot",
 		VerifyHint: "Run tracker_extract on top hits to confirm — DDG/Tavily index page text but client-rendered IDs may not be indexed. Confirmed match = same operator.",
 	}
 
@@ -144,7 +149,9 @@ func pivotViaUrlscan(ctx context.Context, id, platform string, limit int, apiKey
 			Page struct {
 				Domain, URL, IP, ASN, ASNName, Country, Title string `json:"-"`
 			} `json:"page"`
-			Task struct{ Time string `json:"time"` } `json:"task"`
+			Task struct {
+				Time string `json:"time"`
+			} `json:"task"`
 		} `json:"results"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
@@ -235,9 +242,9 @@ var ddgRedirectRE = regexp.MustCompile(`uddg=([^&]+)`)
 
 func pivotViaTavily(ctx context.Context, id string, limit int, apiKey string, out *TrackerPivotOutput) error {
 	body, _ := json.Marshal(map[string]any{
-		"api_key":     apiKey,
-		"query":       id,
-		"max_results": min(limit, 20),
+		"api_key":      apiKey,
+		"query":        id,
+		"max_results":  min(limit, 20),
 		"search_depth": "basic",
 	})
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -360,8 +367,47 @@ func extractHost(rawURL string) string {
 
 var htmlTagRE = regexp.MustCompile(`<[^>]+>`)
 
+// stripHTMLBare removes HTML/XML tags AND decodes HTML character
+// references (&amp;, &#39;, &#x27;, &nbsp;, &copy;, etc.). 18+ tools in
+// the catalog scrape HTML and pass the result through this function
+// before name comparison or entity ingestion, so silently leaving
+// "Smith &amp; Jones" un-decoded was breaking downstream ER. See
+// TestStripHTMLBare_EntityDecodingQuantitative for the proof.
+//
+// After decoding, exotic whitespace characters that HTML-derived
+// strings commonly carry (NBSP U+00A0, narrow NBSP U+202F, zero-width
+// space U+200B, BOM U+FEFF, line separator U+2028, paragraph
+// separator U+2029) are collapsed/normalized so downstream string
+// comparison treats them like ordinary whitespace.
 func stripHTMLBare(s string) string {
-	return strings.TrimSpace(htmlTagRE.ReplaceAllString(s, ""))
+	stripped := htmlTagRE.ReplaceAllString(s, "")
+	decoded := htmlUnescape(stripped)
+	decoded = normalizeHTMLWhitespace(decoded)
+	return strings.TrimSpace(decoded)
+}
+
+// normalizeHTMLWhitespace maps HTML-flavored whitespace characters to
+// their common ASCII equivalents and drops zero-width characters.
+func normalizeHTMLWhitespace(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch r {
+		case '\u00A0', '\u202F', '\u2028', '\u2029':
+			b.WriteByte(' ')
+		case '\u200B', '\u200C', '\u200D', '\uFEFF':
+			// drop
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// htmlUnescape wraps html.UnescapeString. Pulled into a separate symbol
+// so callers (and future regression tests) can target it directly.
+func htmlUnescape(s string) string {
+	return htmlPkgUnescape(s)
 }
 
 func guessPlatformFromID(id string) string {

@@ -15,6 +15,9 @@ func TestPokemonTCGLookup_LiveSearch(t *testing.T) {
 	defer cancel()
 	out, err := PokemonTCGLookup(ctx, map[string]any{"query": "name:charizard"})
 	if err != nil {
+		if isTransientLiveNetworkError(err) {
+			t.Skipf("PokemonTCG endpoint flaky; skipping transient network failure: %v", err)
+		}
 		t.Fatalf("PokemonTCGLookup: %v", err)
 	}
 	if out.Returned == 0 {

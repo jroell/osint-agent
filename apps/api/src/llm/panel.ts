@@ -631,7 +631,7 @@ async function divergentFramesRun(
   };
 }
 
-function safeJSON(text: string): unknown {
+export function safeJSON(text: string): unknown {
   let s = text.trim();
   const fence = s.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (fence) s = fence[1]!;
@@ -646,26 +646,59 @@ function safeJSON(text: string): unknown {
 
 function tryRepairJSON(s: string): unknown {
   let trimmed = s.trim();
-  // If last char is inside an unterminated string, find the last unescaped quote
-  // and drop everything after the preceding completed value.
-  const lastBrace = Math.max(trimmed.lastIndexOf("}"), trimmed.lastIndexOf("]"));
-  if (lastBrace > 0) trimmed = trimmed.slice(0, lastBrace + 1);
-  // Count unbalanced openers and append matching closers (best-effort).
-  let opens = 0, closes = 0, opensSq = 0, closesSq = 0;
+  if (!trimmed) return null;
+
+  // First pass: walk the string tracking string/escape state and the
+  // LIFO stack of open '{' / '[' so we can close in the correct order.
   let inStr = false, esc = false;
-  for (const c of trimmed) {
+  for (let i = 0; i < trimmed.length; i++) {
+    const c = trimmed[i]!;
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+  }
+
+  // If we ended inside a string, drop everything from the last unescaped
+  // quote onwards — that's the unterminated trailing string.
+  if (inStr) {
+    let cut = -1;
+    for (let i = trimmed.length - 1; i >= 0; i--) {
+      if (trimmed[i] === '"' && trimmed[i - 1] !== "\\") { cut = i; break; }
+    }
+    if (cut >= 0) trimmed = trimmed.slice(0, cut);
+  }
+
+  // Strip dangling key with no value: '..."key":' or '..."key": ' → '...'
+  trimmed = trimmed.replace(/,\s*"[^"]*"\s*:\s*$/, "");
+  trimmed = trimmed.replace(/[\s,]+$/, "");
+  // Strip in-structure trailing commas at any depth: "[1,2,3,]" → "[1,2,3]"
+  trimmed = trimmed.replace(/,\s*([}\]])/g, "$1");
+
+  // Re-walk to compute the LIFO stack of unclosed openers.
+  const stack: string[] = [];
+  inStr = false; esc = false;
+  for (let i = 0; i < trimmed.length; i++) {
+    const c = trimmed[i]!;
     if (esc) { esc = false; continue; }
     if (c === "\\") { esc = true; continue; }
     if (c === '"') { inStr = !inStr; continue; }
     if (inStr) continue;
-    if (c === "{") opens++;
-    else if (c === "}") closes++;
-    else if (c === "[") opensSq++;
-    else if (c === "]") closesSq++;
+    if (c === "{" || c === "[") stack.push(c);
+    else if (c === "}") { if (stack[stack.length - 1] === "{") stack.pop(); }
+    else if (c === "]") { if (stack[stack.length - 1] === "[") stack.pop(); }
   }
-  let repaired = trimmed.replace(/,\s*$/, "");
-  for (let i = 0; i < opensSq - closesSq; i++) repaired += "]";
-  for (let i = 0; i < opens - closes; i++) repaired += "}";
+
+  // Close the stack in LIFO order — innermost first. This is the key fix
+  // vs. the prior implementation which appended all "]" then all "}",
+  // producing "]]}}" for inputs that needed "]}]}".
+  let repaired = trimmed;
+  while (stack.length > 0) {
+    const open = stack.pop();
+    repaired += open === "{" ? "}" : "]";
+  }
+  // Final trailing-comma sweep after closing (in case the trim left one).
+  repaired = repaired.replace(/,(\s*[}\]])/g, "$1");
+
   try { return JSON.parse(repaired); } catch { return null; }
 }
 

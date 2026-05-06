@@ -5,6 +5,8 @@ go 1.26.2
 require (
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/projectdiscovery/subfinder/v2 v2.13.0
+	github.com/projectdiscovery/wappalyzergo v0.2.78
+	golang.org/x/text v0.35.0
 )
 
 require (
@@ -84,7 +86,6 @@ require (
 	github.com/projectdiscovery/retryabledns v1.0.111 // indirect
 	github.com/projectdiscovery/retryablehttp-go v1.1.0 // indirect
 	github.com/projectdiscovery/utils v0.7.3 // indirect
-	github.com/projectdiscovery/wappalyzergo v0.2.78 // indirect
 	github.com/refraction-networking/utls v1.7.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/xid v1.5.0 // indirect
@@ -126,7 +127,6 @@ require (
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 	gopkg.in/djherbis/times.v1 v1.3.0 // indirect

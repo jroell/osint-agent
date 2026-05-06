@@ -388,6 +388,9 @@ import "./icij-offshore-leaks";
 import "./instagram-rapidapi";
 // Browserbase headless-browser sessions (REQUIRES BROWSERBASE_API_KEY + BROWSERBASE_PROJECT_ID)
 import "./browserbase-session";
+// Browserbase retrieval escalation + parallel browser-agent coordination
+import "./browserbase-retrieve";
+import "./browserbase-swarm";
 // iNaturalist biodiversity API — free no-key
 import "./inaturalist-search";
 // GovInfo — US Federal Register / Public Laws / Congressional Record (REQUIRES GOVINFO_API_KEY)
