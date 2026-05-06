@@ -63,7 +63,9 @@ Hard rules:
 - Each frame must be plausibly consistent with the question's hard constraints. Do not produce frames that obviously contradict a stated fact.
 - One frame should be a non-obvious / "long-tail" reading that a typical agent would skip.
 
-Output strictly as JSON: { "frames": [{ "name": short tag, "lens": one-sentence interpretation, "reads_keywords_as": {keyword: meaning, ...}, "candidate_population": who/what to look for, "verify_with": one specific tool call or web query that would confirm a candidate from this frame }] }. No prose outside the JSON.`;
+CRITICAL OUTPUT FORMAT — your entire response must be a single JSON object. Begin with the character "{" and end with "}". Do not write any introduction, analysis, reasoning, conclusion, markdown headings, code fences, or commentary anywhere — those will break the downstream parser. Do NOT attempt to answer the question yourself; your job is only to enumerate divergent frames the actual investigators will use.
+
+JSON shape: { "frames": [{ "name": short tag, "lens": one-sentence interpretation, "reads_keywords_as": {keyword: meaning, ...}, "candidate_population": who/what to look for, "verify_with": one specific tool call or web query that would confirm a candidate from this frame }] }`;
 
 export const DIVERGENT_FRAME_LOCKED_SYSTEM_TEMPLATE = `You are a panel member assigned to investigate a question STRICTLY through a single semantic frame. Other panel members are working different frames in parallel; you must commit to yours.
 

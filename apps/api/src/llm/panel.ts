@@ -515,9 +515,9 @@ async function divergentFramesRun(
   try {
     const r = await judge.call({
       system: DIVERGENT_FRAME_GENERATOR_SYSTEM,
-      prompt: membersToPrompt(args.question, args.context),
+      prompt: membersToPrompt(args.question, args.context) + "\n\nReply with the JSON object only. Begin your response with `{`.",
       jsonOutput: true,
-      temperature: 0.4,
+      temperature: 0,
       maxTokens: 3500,
     });
     frameGenResponse = {
