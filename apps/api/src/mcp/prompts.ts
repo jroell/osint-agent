@@ -222,7 +222,9 @@ For each confirmed lookalike: domain, method, MX status, favicon-match, tracker-
 `Find every plausible connection between **${entity_a}** and **${entity_b}**. Run these in parallel and merge results:
 
 **Channel 1 — Knowledge graph (curated facts)**:
-- \`entity_link_finder\` — Diffbot KG 1-hop common neighbors: shared employers, schools, board seats, co-founded orgs
+- \`diffbot_common_neighbors\` — Diffbot KG common neighbors with canonical graph relationships: shared employers, schools, board seats, co-founded orgs, investors, locations, public URIs
+- \`diffbot_article_co_mentions\` — weak public-web co-mention evidence for article-backed leads that need corroboration
+- \`entity_link_finder\` — backwards-compatible Diffbot KG 1-hop common neighbors
 - Best for: well-indexed people/companies (Forbes-tier or larger)
 
 **Channel 2 — Operator-binding via web fingerprints** (only if entities are/own websites):

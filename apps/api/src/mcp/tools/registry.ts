@@ -330,6 +330,90 @@ import "./wikipedia-search";
 import "./coingecko-search";
 // REST Countries — international country reference, 250+ countries (free, no-auth)
 import "./rest-countries-lookup";
+// TMDB — episode-level film/TV metadata (REQUIRES TMDB_API_KEY)
+import "./tmdb-lookup";
+// TVMaze — TV-show metadata (free, no-key) — fallback/cross-reference for TMDB
+import "./tvmaze-lookup";
+// Scryfall — Magic: The Gathering cards (free, no-key)
+import "./scryfall-lookup";
+// YGOPRODeck — Yu-Gi-Oh! cards (free, no-key)
+import "./ygoprodeck-lookup";
+// Trove (NLA Australia) — historical AU newspapers + books (REQUIRES TROVE_API_KEY)
+import "./trove-search";
+// Chronicling America (Library of Congress) — US historic newspapers (free, no-key)
+import "./chronicling-america-search";
+// Library of Congress catalog (loc.gov + id.loc.gov) — books / authority records (free, no-key)
+import "./loc-catalog-search";
+// Wikidata SPARQL — arbitrary structured queries over the entity graph (free, no-key)
+import "./wikidata-sparql";
+// OpenAlex author/work graph traversal — multi-hop academic chains (free, polite mailto)
+import "./openalex-author-graph";
+// Mathematics Genealogy Project — PhD supervisor chains for STEM (free, scrape-only)
+import "./math-genealogy";
+// WikiTree — community-curated global family tree (free, no-key)
+import "./wikitree-lookup";
+// ADB (Australian Dictionary of Biography) — authoritative AU biographical reference (free, scrape)
+import "./adb-search";
+// FamilySearch — LDS-maintained global genealogy database (REQUIRES FAMILYSEARCH_ACCESS_TOKEN)
+import "./familysearch-lookup";
+// HathiTrust Digital Library — ~17M digitized books/periodicals (free, no-key)
+import "./hathitrust-search";
+// Gallica (BnF) — ~10M+ digitized French/European archive (free, no-key)
+import "./gallica-search";
+// NPS NPGallery — US National Register of Historic Places (free, no-key)
+import "./npgallery-search";
+// NDL Japan Digital Collections — ~7.4M Japanese national library items (free, no-key)
+import "./ndl-japan-search";
+// Pokémon TCG database — free, optional POKEMONTCG_API_KEY for higher rate limits
+import "./pokemon-tcg-lookup";
+// Discogs — music release / tracklist database (free, optional DISCOGS_TOKEN)
+import "./discogs-search";
+// Setlist.fm — concert setlists (REQUIRES SETLISTFM_API_KEY)
+import "./setlistfm-lookup";
+// WorldCat (OCLC) — global library catalog (free public, optional WORLDCAT_API_KEY)
+import "./worldcat-search";
+// GeoNames — place-name database (free with GEONAMES_USERNAME)
+import "./geonames-lookup";
+// CIA World Factbook — country reference data (free, no-key, factbook.json mirror)
+import "./cia-factbook";
+// TikTok via tiktok-scraper7 RapidAPI (REQUIRES RAPID_API_KEY) — ported from vurvey-api
+import "./tiktok-lookup";
+// Twitter via twitter154 RapidAPI (REQUIRES RAPID_API_KEY) — cheaper alt to X API v2 Premium
+import "./twitter-rapidapi";
+// YouTube discovery via yt-api RapidAPI (REQUIRES RAPID_API_KEY) — complements youtube_transcript
+import "./youtube-search-rapidapi";
+// ICIJ Offshore Leaks Database — Pandora/Panama/Paradise papers, free no-key
+import "./icij-offshore-leaks";
+// Instagram via instagram120 RapidAPI (REQUIRES RAPID_API_KEY) — vurvey-port
+import "./instagram-rapidapi";
+// Browserbase headless-browser sessions (REQUIRES BROWSERBASE_API_KEY + BROWSERBASE_PROJECT_ID)
+import "./browserbase-session";
+// iNaturalist biodiversity API — free no-key
+import "./inaturalist-search";
+// GovInfo — US Federal Register / Public Laws / Congressional Record (REQUIRES GOVINFO_API_KEY)
+import "./govinfo-search";
+// ADS-B aircraft tracking via adsb.lol (free) + RapidAPI ADS-B Exchange tier
+import "./adsb-lookup";
+// AISHub vessel AIS (REQUIRES AISHUB_USERNAME)
+import "./aishub-lookup";
+// Encyclopedia of Life — biodiversity reference (free, no-key)
+import "./eol-search";
+// SerpAPI Google Scholar — paywalled academic literature (REQUIRES SERPAPI_KEY)
+import "./serpapi-google-scholar";
+// People Data Labs — identity + employment enrichment (REQUIRES PEOPLE_DATA_LABS_API_KEY)
+import "./people-data-labs";
+// Crunchbase — funding rounds + executive histories (REQUIRES CRUNCHBASE_API_KEY)
+import "./crunchbase-lookup";
+// SecurityTrails — historical WHOIS + DNS (REQUIRES SECURITYTRAILS_API_KEY)
+import "./securitytrails-lookup";
+// MarineTraffic — paid commercial vessel tracking (REQUIRES MARINETRAFFIC_API_KEY)
+import "./marinetraffic-lookup";
+// FlightAware AeroAPI — dominant commercial flight tracking (REQUIRES FLIGHTAWARE_API_KEY)
+import "./flightaware-lookup";
+// Sentinel Hub — Copernicus satellite imagery (REQUIRES SENTINEL_HUB_CLIENT_ID + SECRET)
+import "./sentinel-hub-imagery";
+// Brave Search — independent search index (REQUIRES BRAVE_SEARCH_API_KEY)
+import "./brave-search";
 // GraphQL clairvoyance — bypass disabled introspection via field-suggestion error abuse
 import "./graphql-clairvoyance";
 // THE MOAT — persist + query API-discovery findings across sessions

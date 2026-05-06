@@ -143,6 +143,8 @@ toolRegistry.register({
           crunchbase: (e.allUris || []).find((u: string) => /crunchbase\.com/.test(u)),
           wikipedia: e.wikipediaUri,
         })),
+        graph: get("diffbot_kg_query").graph,
+        hard_to_find_leads: (get("diffbot_kg_query").graph?.hard_to_find_leads || []).slice(0, 20),
       } : null,
       synthesis: {
         tavily: get("tavily_search") ? { answer: get("tavily_search").answer, sources: (get("tavily_search").results || []).map((x: any) => x.url).slice(0, 5) } : null,

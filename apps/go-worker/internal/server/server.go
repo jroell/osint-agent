@@ -152,7 +152,7 @@ func handleTool(c echo.Context) error {
 	case "twitter_user":
 		out, err = tools.TwitterUser(c.Request().Context(), req.Input)
 	case "linkedin_proxycurl":
-		out, err = tools.LinkedInProxycurl(c.Request().Context(), req.Input)
+		out, err = tools.LinkedInProxycurlLookup(c.Request().Context(), req.Input)
 	case "instagram_user":
 		out, err = tools.InstagramUser(c.Request().Context(), req.Input)
 	case "firecrawl_scrape":
@@ -163,6 +163,12 @@ func handleTool(c echo.Context) error {
 		out, err = tools.DiffbotExtract(c.Request().Context(), req.Input)
 	case "diffbot_kg_query":
 		out, err = tools.DiffbotKGQuery(c.Request().Context(), req.Input)
+	case "diffbot_entity_network":
+		out, err = tools.DiffbotEntityNetwork(c.Request().Context(), req.Input)
+	case "diffbot_common_neighbors":
+		out, err = tools.DiffbotCommonNeighbors(c.Request().Context(), req.Input)
+	case "diffbot_article_co_mentions":
+		out, err = tools.DiffbotArticleCoMentions(c.Request().Context(), req.Input)
 	case "tavily_search":
 		out, err = tools.TavilySearch(c.Request().Context(), req.Input)
 	case "perplexity_search":
@@ -441,6 +447,90 @@ func handleTool(c echo.Context) error {
 		out, err = tools.CoinGeckoSearch(c.Request().Context(), req.Input)
 	case "rest_countries_lookup":
 		out, err = tools.RestCountriesLookup(c.Request().Context(), req.Input)
+	case "tmdb_lookup":
+		out, err = tools.TMDBLookup(c.Request().Context(), req.Input)
+	case "tvmaze_lookup":
+		out, err = tools.TVMazeLookup(c.Request().Context(), req.Input)
+	case "scryfall_lookup":
+		out, err = tools.ScryfallLookup(c.Request().Context(), req.Input)
+	case "ygoprodeck_lookup":
+		out, err = tools.YGOProDeckLookup(c.Request().Context(), req.Input)
+	case "trove_search":
+		out, err = tools.TroveSearch(c.Request().Context(), req.Input)
+	case "chronicling_america_search":
+		out, err = tools.ChroniclingAmericaSearch(c.Request().Context(), req.Input)
+	case "loc_catalog_search":
+		out, err = tools.LOCCatalogSearch(c.Request().Context(), req.Input)
+	case "wikidata_sparql":
+		out, err = tools.WikidataSPARQL(c.Request().Context(), req.Input)
+	case "openalex_author_graph":
+		out, err = tools.OpenAlexAuthorGraph(c.Request().Context(), req.Input)
+	case "math_genealogy":
+		out, err = tools.MathGenealogy(c.Request().Context(), req.Input)
+	case "wikitree_lookup":
+		out, err = tools.WikiTreeLookup(c.Request().Context(), req.Input)
+	case "adb_search":
+		out, err = tools.ADBSearch(c.Request().Context(), req.Input)
+	case "familysearch_lookup":
+		out, err = tools.FamilySearchLookup(c.Request().Context(), req.Input)
+	case "hathitrust_search":
+		out, err = tools.HathiTrustSearch(c.Request().Context(), req.Input)
+	case "gallica_search":
+		out, err = tools.GallicaSearch(c.Request().Context(), req.Input)
+	case "npgallery_search":
+		out, err = tools.NPGallerySearch(c.Request().Context(), req.Input)
+	case "ndl_japan_search":
+		out, err = tools.NDLJapanSearch(c.Request().Context(), req.Input)
+	case "pokemon_tcg_lookup":
+		out, err = tools.PokemonTCGLookup(c.Request().Context(), req.Input)
+	case "discogs_search":
+		out, err = tools.DiscogsSearch(c.Request().Context(), req.Input)
+	case "setlistfm_lookup":
+		out, err = tools.SetlistFMLookup(c.Request().Context(), req.Input)
+	case "worldcat_search":
+		out, err = tools.WorldCatSearch(c.Request().Context(), req.Input)
+	case "geonames_lookup":
+		out, err = tools.GeoNamesLookup(c.Request().Context(), req.Input)
+	case "cia_factbook":
+		out, err = tools.CIAFactbookLookup(c.Request().Context(), req.Input)
+	case "tiktok_lookup":
+		out, err = tools.TikTokLookup(c.Request().Context(), req.Input)
+	case "twitter_rapidapi":
+		out, err = tools.TwitterRapidAPILookup(c.Request().Context(), req.Input)
+	case "youtube_search_rapidapi":
+		out, err = tools.YouTubeSearchRapidAPILookup(c.Request().Context(), req.Input)
+	case "icij_offshore_leaks":
+		out, err = tools.ICIJOffshoreLeaks(c.Request().Context(), req.Input)
+	case "instagram_rapidapi":
+		out, err = tools.InstagramRapidAPILookup(c.Request().Context(), req.Input)
+	case "browserbase_session":
+		out, err = tools.BrowserbaseSession(c.Request().Context(), req.Input)
+	case "inaturalist_search":
+		out, err = tools.INaturalistSearch(c.Request().Context(), req.Input)
+	case "govinfo_search":
+		out, err = tools.GovInfoSearch(c.Request().Context(), req.Input)
+	case "adsb_lookup":
+		out, err = tools.ADSBLookup(c.Request().Context(), req.Input)
+	case "aishub_lookup":
+		out, err = tools.AISHubLookup(c.Request().Context(), req.Input)
+	case "eol_search":
+		out, err = tools.EOLSearch(c.Request().Context(), req.Input)
+	case "serpapi_google_scholar":
+		out, err = tools.SerpAPIGoogleScholar(c.Request().Context(), req.Input)
+	case "people_data_labs":
+		out, err = tools.PeopleDataLabsLookup(c.Request().Context(), req.Input)
+	case "crunchbase_lookup":
+		out, err = tools.CrunchbaseLookup(c.Request().Context(), req.Input)
+	case "securitytrails_lookup":
+		out, err = tools.SecurityTrailsLookup(c.Request().Context(), req.Input)
+	case "marinetraffic_lookup":
+		out, err = tools.MarineTrafficLookup(c.Request().Context(), req.Input)
+	case "flightaware_lookup":
+		out, err = tools.FlightAwareLookup(c.Request().Context(), req.Input)
+	case "sentinel_hub_imagery":
+		out, err = tools.SentinelHubImagery(c.Request().Context(), req.Input)
+	case "brave_search":
+		out, err = tools.BraveSearch(c.Request().Context(), req.Input)
 	default:
 		return c.JSON(http.StatusOK, ToolResponse{
 			RequestID: req.RequestID,

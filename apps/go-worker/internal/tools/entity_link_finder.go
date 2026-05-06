@@ -20,13 +20,13 @@ type LinkedEntity struct {
 }
 
 type Connection struct {
-	Kind       string       `json:"kind"`        // shared_employer | shared_school | shared_board | founded_same_company | a_employs_b | b_employs_a | shared_subject | shared_investor
-	Bridge     LinkedEntity `json:"bridge"`      // the entity through which A and B are connected
-	ARole      string       `json:"a_role,omitempty"`  // A's relationship to bridge (e.g. "Software Engineer", "Founder")
+	Kind       string       `json:"kind"`             // shared_employer | shared_school | shared_board | founded_same_company | a_employs_b | b_employs_a | shared_subject | shared_investor
+	Bridge     LinkedEntity `json:"bridge"`           // the entity through which A and B are connected
+	ARole      string       `json:"a_role,omitempty"` // A's relationship to bridge (e.g. "Software Engineer", "Founder")
 	BRole      string       `json:"b_role,omitempty"`
 	APeriod    string       `json:"a_period,omitempty"`
 	BPeriod    string       `json:"b_period,omitempty"`
-	Confidence string       `json:"confidence"`        // "high" | "medium" | "low"
+	Confidence string       `json:"confidence"` // "high" | "medium" | "low"
 }
 
 type EntityLinkOutput struct {
@@ -186,9 +186,9 @@ func EntityLinkFinder(ctx context.Context, input map[string]any) (*EntityLinkOut
 		for _, emp := range bN.employers {
 			if linkMatch(founded.id, founded.name, emp.id, emp.name) {
 				out.Connections = append(out.Connections, Connection{
-					Kind: "a_founded_b_employer",
+					Kind:   "a_founded_b_employer",
 					Bridge: LinkedEntity{ID: founded.id, Name: bestName(founded.name, emp.name), Type: "Organization"},
-					ARole: "founder", BRole: emp.role, BPeriod: emp.period,
+					ARole:  "founder", BRole: emp.role, BPeriod: emp.period,
 					Confidence: "high",
 				})
 			}
@@ -198,9 +198,9 @@ func EntityLinkFinder(ctx context.Context, input map[string]any) (*EntityLinkOut
 		for _, emp := range aN.employers {
 			if linkMatch(founded.id, founded.name, emp.id, emp.name) {
 				out.Connections = append(out.Connections, Connection{
-					Kind: "b_founded_a_employer",
+					Kind:   "b_founded_a_employer",
 					Bridge: LinkedEntity{ID: founded.id, Name: bestName(founded.name, emp.name), Type: "Organization"},
-					ARole: emp.role, APeriod: emp.period, BRole: "founder",
+					ARole:  emp.role, APeriod: emp.period, BRole: "founder",
 					Confidence: "high",
 				})
 			}
@@ -241,19 +241,15 @@ func EntityLinkFinder(ctx context.Context, input map[string]any) (*EntityLinkOut
 		}
 	}
 
+	// Add the canonical Diffbot graph-neighbor pass. This covers the original
+	// employer/school/board/founder checks and newer OSINT pivots such as shared
+	// investors, locations, and public URIs. The dedupe pass below collapses any
+	// overlap with the legacy checks above.
+	out.Connections = append(out.Connections, diffbotConnectionsFromRaw(resA.raw, resB.raw)...)
+
 	// Dedupe connections by (kind, bridge.id|bridge.name).
-	seen := map[string]struct{}{}
-	deduped := []Connection{}
-	for _, c := range out.Connections {
-		key := c.Kind + "::" + c.Bridge.ID + "::" + strings.ToLower(c.Bridge.Name)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		deduped = append(deduped, c)
-	}
-	out.Connections = deduped
-	out.TotalConnections = len(deduped)
+	out.Connections = diffbotDedupeConnections(out.Connections)
+	out.TotalConnections = len(out.Connections)
 	if out.TotalConnections == 0 {
 		out.Note = "1-hop common-neighbor analysis found no shared employers/schools/boards/founded-companies. Multi-hop traversal not yet implemented."
 	}
@@ -406,18 +402,16 @@ func confidenceFromOverlap(periodA, periodB string) string {
 func timeRangesOverlap(a, b string) bool {
 	yearsA := extractYears(a)
 	yearsB := extractYears(b)
-	for _, ya := range yearsA {
-		for _, yb := range yearsB {
-			if ya == yb {
-				return true
-			}
-		}
+	if len(yearsA) == 0 || len(yearsB) == 0 {
+		return false
 	}
-	return false
+	aStart, aEnd := yearRange(yearsA)
+	bStart, bEnd := yearRange(yearsB)
+	return aStart <= bEnd && bStart <= aEnd
 }
 
-func extractYears(s string) []string {
-	var out []string
+func extractYears(s string) []int {
+	var out []int
 	for i := 0; i+4 <= len(s); i++ {
 		chunk := s[i : i+4]
 		if chunk[0] == '1' || chunk[0] == '2' {
@@ -429,11 +423,27 @@ func extractYears(s string) []string {
 				}
 			}
 			if ok {
-				out = append(out, chunk)
+				var y int
+				if _, err := fmt.Sscanf(chunk, "%d", &y); err == nil {
+					out = append(out, y)
+				}
 			}
 		}
 	}
 	return out
+}
+
+func yearRange(years []int) (int, int) {
+	start, end := years[0], years[0]
+	for _, y := range years[1:] {
+		if y < start {
+			start = y
+		}
+		if y > end {
+			end = y
+		}
+	}
+	return start, end
 }
 
 func formatPeriod(from, to, isCurrent any) string {

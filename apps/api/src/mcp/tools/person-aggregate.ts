@@ -318,6 +318,10 @@ toolRegistry.register({
       if (r.tool === "grok_x_search" && o.answer) syntheses.grok_x = { answer: o.answer };
     }
 
+    const kgGraphs = results
+      .filter(r => !r.error && r.tool === "diffbot_kg_query" && (r.output as any)?.graph)
+      .map(r => (r.output as any).graph);
+
     return {
       inputs: { name, email, username, domain, include_heuristic },
       tools_called: dedupedPlan.length,
@@ -329,6 +333,11 @@ toolRegistry.register({
       emails,
       cross_platform_handles: crossPlatform,
       synthesis: syntheses,
+      knowledge_graph: {
+        source: kgGraphs.length ? "diffbot_kg_query" : null,
+        graphs: kgGraphs,
+        hard_to_find_leads: kgGraphs.flatMap((g: any) => g.hard_to_find_leads || []).slice(0, 20),
+      },
       per_tool_breakdown: results.map(r => ({
         tool: r.tool, gate: r.gate, took_ms: r.took_ms,
         ok: !r.error, error: r.error,

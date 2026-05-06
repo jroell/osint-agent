@@ -19,14 +19,14 @@ import (
 // =============================================================================
 
 type FirecrawlOutput struct {
-	URL          string                 `json:"url"`
-	Markdown     string                 `json:"markdown"`
-	HTML         string                 `json:"html,omitempty"`
-	HTMLLen      int                    `json:"html_bytes,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
-	StatusCode   int                    `json:"status_code,omitempty"`
-	Source       string                 `json:"source"`
-	TookMs       int64                  `json:"tookMs"`
+	URL        string                 `json:"url"`
+	Markdown   string                 `json:"markdown"`
+	HTML       string                 `json:"html,omitempty"`
+	HTMLLen    int                    `json:"html_bytes,omitempty"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	StatusCode int                    `json:"status_code,omitempty"`
+	Source     string                 `json:"source"`
+	TookMs     int64                  `json:"tookMs"`
 }
 
 // FirecrawlScrape uses Firecrawl's JS-rendering scrape API. Returns clean
@@ -190,6 +190,7 @@ type DiffbotExtractOutput struct {
 	URL     string                   `json:"url"`
 	Type    string                   `json:"type,omitempty"`
 	Objects []map[string]interface{} `json:"objects,omitempty"`
+	Graph   DiffbotCanonicalGraph    `json:"graph"`
 	Source  string                   `json:"source"`
 	TookMs  int64                    `json:"tookMs"`
 }
@@ -224,6 +225,7 @@ func DiffbotExtract(ctx context.Context, input map[string]any) (*DiffbotExtractO
 	}
 	return &DiffbotExtractOutput{
 		URL: rawURL, Type: parsed.Type, Objects: parsed.Objects,
+		Graph:  diffbotBuildCanonicalGraph(parsed.Objects, "diffbot_extract"),
 		Source: "api.diffbot.com/v3/analyze",
 		TookMs: time.Since(start).Milliseconds(),
 	}, nil
@@ -234,13 +236,14 @@ func DiffbotExtract(ctx context.Context, input map[string]any) (*DiffbotExtractO
 // =============================================================================
 
 type DiffbotKGOutput struct {
-	Query   string                   `json:"query"`
-	Type    string                   `json:"type,omitempty"`
-	Total   int                      `json:"total"`
-	Hits    int                      `json:"hits"`
+	Query    string                   `json:"query"`
+	Type     string                   `json:"type,omitempty"`
+	Total    int                      `json:"total"`
+	Hits     int                      `json:"hits"`
 	Entities []map[string]interface{} `json:"entities"`
-	Source  string                   `json:"source"`
-	TookMs  int64                    `json:"tookMs"`
+	Graph    DiffbotCanonicalGraph    `json:"graph"`
+	Source   string                   `json:"source"`
+	TookMs   int64                    `json:"tookMs"`
 }
 
 // DiffbotKGQuery runs a Diffbot DQL query against the Knowledge Graph (~10B
@@ -300,7 +303,7 @@ func DiffbotKGQuery(ctx context.Context, input map[string]any) (*DiffbotKGOutput
 	}
 	return &DiffbotKGOutput{
 		Query: q, Type: entityType, Total: parsed.Total, Hits: parsed.Hits,
-		Entities: entities, Source: "kg.diffbot.com/dql",
+		Entities: entities, Graph: diffbotBuildCanonicalGraph(entities, "diffbot_kg_query"), Source: "kg.diffbot.com/dql",
 		TookMs: time.Since(start).Milliseconds(),
 	}, nil
 }
