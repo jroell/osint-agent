@@ -3,7 +3,7 @@ import { toolRegistry } from "./instance";
 import { consultPanel, listAvailablePanels, type Mode, type PanelId } from "../../llm/panel";
 
 const PANEL_IDS = ["deep-reasoning", "broad-knowledge", "cjk-knowledge", "vision", "fast-cheap", "adversarial-redteam"] as const;
-const MODES = ["parallel-poll", "synthesis", "adversarial", "roundtable"] as const;
+const MODES = ["parallel-poll", "synthesis", "adversarial", "roundtable", "divergent-frames"] as const;
 
 const input = z.object({
   question: z.string().min(10).describe("The question to put to the panel. Be specific."),
@@ -14,7 +14,7 @@ const input = z.object({
     "Which expert panel to consult. deep-reasoning = highest-II reasoners. broad-knowledge = max training-data diversity. cjk-knowledge = Chinese/Japanese/Korean entities. vision = image OSINT. fast-cheap = high-volume routine. adversarial-redteam = stress-test hypotheses.",
   ),
   mode: z.enum(MODES).default("synthesis").describe(
-    "parallel-poll = each member answers independently, returns all opinions. synthesis = parallel + judge synthesizes consensus and surfaces disagreements (default). adversarial = half panel argues for a hypothesis, half attacks it, judge rules. roundtable = 3-round group discussion with cross-critique.",
+    "parallel-poll = each member answers independently, returns all opinions. synthesis = parallel + judge synthesizes consensus and surfaces disagreements (default). adversarial = half panel argues for a hypothesis, half attacks it, judge rules. roundtable = 3-round group discussion with cross-critique. divergent-frames = generate 4-6 maximally-different semantic frames of the question, lock each panel member to a different frame, then a judge scores cross-frame candidates against the full constraint list — use when an ambiguous keyword could be read multiple ways and you want to avoid single-frame anchoring.",
   ),
   image_b64: z.string().optional().describe("Optional base64-encoded image (use vision panel)."),
   image_mime: z.string().optional().describe("MIME type of image, e.g. 'image/jpeg'."),
@@ -23,7 +23,7 @@ const input = z.object({
 toolRegistry.register({
   name: "panel_consult",
   description:
-    "Consult a multi-LLM expert panel for hard OSINT questions: multi-hop entity resolution, cross-platform connection inference, hypothesis generation, hallucination cross-checking, adversary-mindset stress-testing. Use when single-tool output isn't enough — when you have N findings and need to know which connect to the same entity, or when a vague clue could lead in 5 directions and you want diverse expert opinions before chasing one. Six panels available (deep-reasoning, broad-knowledge, cjk-knowledge, vision, fast-cheap, adversarial-redteam) and four modes (parallel-poll, synthesis, adversarial, roundtable). Auto-disabled panels: those whose member providers don't have keys in env. Returns: per-member responses, synthesized consensus, agreement_score 0..1, disagreements list (where models split), confidence_warnings (claims only one model made — likely hallucinations), follow_ups (concrete next OSINT steps).",
+    "Consult a multi-LLM expert panel for hard OSINT questions: multi-hop entity resolution, cross-platform connection inference, hypothesis generation, hallucination cross-checking, adversary-mindset stress-testing, anti-anchoring divergent-frame exploration. Use when single-tool output isn't enough — when you have N findings and need to know which connect to the same entity, or when a vague clue could lead in 5 directions and you want diverse expert opinions before chasing one. Six panels available (deep-reasoning, broad-knowledge, cjk-knowledge, vision, fast-cheap, adversarial-redteam) and five modes (parallel-poll, synthesis, adversarial, roundtable, divergent-frames). Auto-disabled panels: those whose member providers don't have keys in env. Returns: per-member responses, synthesized consensus, agreement_score 0..1, disagreements list (where models split), confidence_warnings (claims only one model made — likely hallucinations), follow_ups (concrete next OSINT steps). divergent-frames mode additionally returns the per-frame candidate matrix and the judge's frame-by-frame elimination reasoning — use it specifically when an ambiguous keyword in the question could be read across multiple domains and a single-frame panel would all converge on the wrong reading.",
   inputSchema: input,
   costMillicredits: 100,
   handler: async (i) => {

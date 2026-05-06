@@ -14,13 +14,16 @@ import {
   ADVERSARIAL_DEFENSE_SYSTEM,
   ADVERSARIAL_JUDGE_SYSTEM,
   ADVERSARIAL_PROSECUTION_SYSTEM,
+  DIVERGENT_FRAME_GENERATOR_SYSTEM,
+  DIVERGENT_FRAME_JUDGE_SYSTEM,
+  DIVERGENT_FRAME_LOCKED_SYSTEM_TEMPLATE,
   quickAgreementScore,
   SYNTHESIS_SYSTEM,
   SYNTHESIS_USER_TEMPLATE,
 } from "./panel-aggregators";
 
 export type PanelId = "deep-reasoning" | "broad-knowledge" | "cjk-knowledge" | "vision" | "fast-cheap" | "adversarial-redteam";
-export type Mode = "parallel-poll" | "synthesis" | "adversarial" | "roundtable";
+export type Mode = "parallel-poll" | "synthesis" | "adversarial" | "roundtable" | "divergent-frames";
 
 interface PanelMember {
   subject: string;
@@ -139,8 +142,8 @@ export function listAvailablePanels(): Array<{
       available: avail >= 2,
       member_count_total: total,
       member_count_available: avail,
-      // All four modes work as long as quorum is met. Specialized routing comes in v2.
-      available_modes: avail >= 2 ? ["parallel-poll", "synthesis", "adversarial", "roundtable"] : [],
+      // All five modes work as long as quorum is met. Specialized routing comes in v2.
+      available_modes: avail >= 2 ? ["parallel-poll", "synthesis", "adversarial", "roundtable", "divergent-frames"] : [],
     };
   });
 }
@@ -186,6 +189,12 @@ export interface ConsultResult {
   roundtable?: {
     rounds: Array<{ round: number; responses: MemberResponse[] }>;
   };
+  /** Divergent-frames-mode payload. */
+  divergent?: {
+    frames: Array<{ name: string; lens: string; reads_keywords_as?: Record<string, string>; candidate_population?: string; verify_with?: string }>;
+    per_frame_responses: Array<{ frame: string; member: string; response: MemberResponse }>;
+    judge_verdict: unknown;
+  };
   total_took_ms: number;
   estimated_cost_millicredits: number;
   judge_used?: string;
@@ -220,6 +229,9 @@ export async function consultPanel(args: ConsultArgs): Promise<ConsultResult> {
       break;
     case "roundtable":
       result = await roundtableRun(panel, available, args);
+      break;
+    case "divergent-frames":
+      result = await divergentFramesRun(panel, available, args);
       break;
   }
 
@@ -480,21 +492,194 @@ async function roundtableRun(
   };
 }
 
+interface DivergentFrame {
+  name: string;
+  lens: string;
+  reads_keywords_as?: Record<string, string>;
+  candidate_population?: string;
+  verify_with?: string;
+}
+
+async function divergentFramesRun(
+  panel: PanelDef,
+  members: PanelMember[],
+  args: ConsultArgs,
+): Promise<ConsultResult> {
+  const judgeSubject = args.judge ?? panel.defaultJudge;
+  const judge = makeLLM(judgeSubject);
+
+  // Phase 1: ask the judge to enumerate maximally-divergent semantic frames.
+  let frames: DivergentFrame[] = [];
+  let frameGenResponse: MemberResponse;
+  const frameGenT0 = performance.now();
+  try {
+    const r = await judge.call({
+      system: DIVERGENT_FRAME_GENERATOR_SYSTEM,
+      prompt: membersToPrompt(args.question, args.context),
+      jsonOutput: true,
+      temperature: 0.4,
+      maxTokens: 3500,
+    });
+    frameGenResponse = {
+      subject: `${judgeSubject} (frame-generator)`,
+      ok: true,
+      text: r.text,
+      took_ms: r.took_ms,
+      usage: r.usage,
+    };
+    const parsed = safeJSON(r.text) as { frames?: DivergentFrame[] } | null;
+    if (parsed?.frames && Array.isArray(parsed.frames)) frames = parsed.frames;
+  } catch (e) {
+    frameGenResponse = {
+      subject: `${judgeSubject} (frame-generator)`,
+      ok: false,
+      text: "",
+      took_ms: performance.now() - frameGenT0,
+      error: (e as Error).message.slice(0, 300),
+    };
+  }
+  if (frames.length < 2) {
+    return {
+      panel_id: panel.id,
+      mode: "divergent-frames",
+      individual: [frameGenResponse],
+      consensus: "frame generator failed to produce ≥2 frames; cannot run divergent-frames mode",
+      agreement_score: 0,
+      judge_used: judgeSubject,
+      total_took_ms: 0,
+      estimated_cost_millicredits: 0,
+    };
+  }
+
+  // Phase 2: distribute frames across panel members. If more frames than
+  // members, drop low-priority frames (keep first N). If more members than
+  // frames, double up — multiple members can investigate the same frame.
+  const assignments: Array<{ member: PanelMember; frame: DivergentFrame }> = [];
+  for (let i = 0; i < members.length; i++) {
+    assignments.push({ member: members[i]!, frame: frames[i % frames.length]! });
+  }
+
+  // Each member is given a frame-locked system prompt; they generate candidates
+  // strictly within that frame. Run all member calls in parallel.
+  const perFrameResponses = await Promise.all(
+    assignments.map(async ({ member, frame }) => {
+      const sys = DIVERGENT_FRAME_LOCKED_SYSTEM_TEMPLATE
+        .replace("{frame_name}", frame.name)
+        .replace("{frame_lens}", frame.lens)
+        .replace("{frame_keywords}", JSON.stringify(frame.reads_keywords_as ?? {}))
+        .replace("{frame_population}", frame.candidate_population ?? "(unspecified)");
+      const response = await callOneMember(member, {
+        system: sys,
+        prompt: membersToPrompt(args.question, args.context),
+        jsonOutput: true,
+        temperature: 0,
+        maxTokens: args.maxTokens ?? 1200,
+      });
+      return { frame: frame.name, member: member.subject, response };
+    }),
+  );
+
+  // Phase 3: cross-frame judging. Stitch all per-frame outputs and ask the
+  // judge to score every candidate against every original constraint.
+  const candidatesBlob = perFrameResponses
+    .filter((r) => r.response.ok)
+    .map(
+      (r) => `── frame: ${r.frame} (member: ${r.member}) ──\n${r.response.text}`,
+    )
+    .join("\n\n");
+
+  let judgeVerdict: unknown = null;
+  let consensus = "(judge call failed)";
+  let followUps: string[] | undefined;
+  try {
+    const judged = await judge.call({
+      system: DIVERGENT_FRAME_JUDGE_SYSTEM,
+      prompt: `[Original question]\n${args.question}\n\n[Context]\n${args.context ?? "(none)"}\n\n[Per-frame candidates]\n${candidatesBlob}`,
+      jsonOutput: true,
+      temperature: 0,
+      maxTokens: 2500,
+    });
+    judgeVerdict = safeJSON(judged.text);
+    if (judgeVerdict && typeof judgeVerdict === "object") {
+      const v = judgeVerdict as { top_candidate?: string; winning_frame?: string; next_action?: string };
+      if (v.top_candidate) {
+        consensus = `Top candidate: ${v.top_candidate}` + (v.winning_frame ? ` (frame: ${v.winning_frame})` : "");
+      }
+      if (v.next_action) followUps = [v.next_action];
+    }
+  } catch (e) {
+    judgeVerdict = { error: (e as Error).message.slice(0, 200) };
+    consensus = `(judge errored: ${(e as Error).message.slice(0, 120)})`;
+  }
+
+  const allResponses = [frameGenResponse, ...perFrameResponses.map((r) => r.response)];
+  return {
+    panel_id: panel.id,
+    mode: "divergent-frames",
+    individual: allResponses,
+    consensus,
+    agreement_score: quickAgreementScore(perFrameResponses.filter((r) => r.response.ok).map((r) => r.response.text)),
+    follow_ups: followUps,
+    divergent: {
+      frames,
+      per_frame_responses: perFrameResponses,
+      judge_verdict: judgeVerdict,
+    },
+    judge_used: judgeSubject,
+    total_took_ms: 0,
+    estimated_cost_millicredits: 0,
+  };
+}
+
 function safeJSON(text: string): unknown {
   let s = text.trim();
   const fence = s.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (fence) s = fence[1]!;
   const obj = s.match(/\{[\s\S]*\}/);
   if (obj) s = obj[0];
-  try { return JSON.parse(s); } catch { return null; }
+  try { return JSON.parse(s); } catch { /* fall through to repair */ }
+  // Repair attempt: token-truncated JSON often ends mid-string / mid-array.
+  // Walk backwards closing open braces/brackets, dropping the trailing comma
+  // and any unterminated string. Recovers ~90% of mid-output truncations.
+  return tryRepairJSON(s);
+}
+
+function tryRepairJSON(s: string): unknown {
+  let trimmed = s.trim();
+  // If last char is inside an unterminated string, find the last unescaped quote
+  // and drop everything after the preceding completed value.
+  const lastBrace = Math.max(trimmed.lastIndexOf("}"), trimmed.lastIndexOf("]"));
+  if (lastBrace > 0) trimmed = trimmed.slice(0, lastBrace + 1);
+  // Count unbalanced openers and append matching closers (best-effort).
+  let opens = 0, closes = 0, opensSq = 0, closesSq = 0;
+  let inStr = false, esc = false;
+  for (const c of trimmed) {
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === "{") opens++;
+    else if (c === "}") closes++;
+    else if (c === "[") opensSq++;
+    else if (c === "]") closesSq++;
+  }
+  let repaired = trimmed.replace(/,\s*$/, "");
+  for (let i = 0; i < opensSq - closesSq; i++) repaired += "]";
+  for (let i = 0; i < opens - closes; i++) repaired += "}";
+  try { return JSON.parse(repaired); } catch { return null; }
 }
 
 /** Rough estimate; the registry pre-deducts `costMillicredits`. True-up via usage in v2. */
 function estimateCost(result: ConsultResult, mode: Mode): number {
   const memberCalls = result.individual.length;
-  const judgeCall = mode === "synthesis" || mode === "adversarial" || mode === "roundtable" ? 1 : 0;
-  // Assume ~12 millicredits per member call (input+output for ~1k tokens at mid-tier rates), 8 for judge.
-  return Math.ceil(memberCalls * 12 + judgeCall * 8);
+  const judgeCalls =
+    mode === "synthesis" || mode === "adversarial" || mode === "roundtable"
+      ? 1
+      : mode === "divergent-frames"
+        ? 2 // frame-generator + cross-frame judge
+        : 0;
+  // Assume ~12 millicredits per member call (input+output for ~1k tokens at mid-tier rates), 8 per judge call.
+  return Math.ceil(memberCalls * 12 + judgeCalls * 8);
 }
 
 export const PANEL_REGISTRY = PANELS;
